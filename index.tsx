@@ -7,6 +7,7 @@ import { markedTerminal } from "marked-terminal";
 import chalk from "chalk";
 import OpenAI from "openai";
 import { config } from "dotenv";
+import { $ } from "bun";
 
 config();
 
@@ -55,6 +56,25 @@ const Markdown = ({ children }: { children: string }) => {
   );
 };
 
+// Get git diff or fallback to last commit stats, truncated to 2000 chars
+const getGitRoastData = async (): Promise<string> => {
+  try {
+    // Try git diff first
+    const diffResult = await $`git diff`.quiet().text();
+    
+    if (diffResult.trim()) {
+      return diffResult.slice(0, 2000);
+    }
+    
+    // Fallback to last commit stats if no uncommitted changes
+    const showResult = await $`git show HEAD --stat`.quiet().text();
+    return showResult.slice(0, 2000);
+  } catch {
+    // Not a git repo or other git error
+    throw new Error("No estás en un repositorio git. ¿Qué intentas esconder?");
+  }
+};
+
 const openai = new OpenAI({
   baseURL: process.env.BASE_URL,
   apiKey: process.env.API_KEY,
@@ -82,11 +102,23 @@ const SudoHabla = () => {
     setIsStreaming(true);
 
     try {
+      let userContent: string;
+
+      if (query === "/roast") {
+        // Get git data and build roast query
+        const gitData = await getGitRoastData();
+        userContent = `Here is my latest code. Roast my technical skills and this specific diff in Spanish. Be brutal, cynical, and use practical dev vocabulary.
+
+${gitData}`;
+      } else {
+        userContent = query;
+      }
+
       const stream = await openai.chat.completions.create({
         model: process.env.MODEL || "gpt-3.5-turbo",
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: query },
+          { role: "user", content: userContent },
         ],
         stream: true,
       });
@@ -140,7 +172,7 @@ const SudoHabla = () => {
             value={input}
             onChange={setInput}
             onSubmit={handleSubmit}
-            placeholder="Type /lore, /meaning <word>, or /exit"
+            placeholder="/lore, /roast, /meaning <word>, /exit"
           />
         )}
       </Box>
