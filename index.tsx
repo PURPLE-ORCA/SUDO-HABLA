@@ -1,11 +1,59 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { render, Box, Text, Spacer } from "ink";
 import TextInput from "ink-text-input";
-import Markdown from "ink-markdown";
+import { marked } from "marked";
+// @ts-ignore - marked-terminal lacks TypeScript definitions
+import { markedTerminal } from "marked-terminal";
+import chalk from "chalk";
 import OpenAI from "openai";
 import { config } from "dotenv";
 
 config();
+
+// Configure marked to use terminal renderer via extension
+marked.use(
+  markedTerminal({
+    // Styling options
+    code: chalk.yellow,
+    blockquote: chalk.gray.italic,
+    heading: chalk.green.bold,
+    firstHeading: chalk.magenta.underline.bold,
+    strong: chalk.bold,
+    em: chalk.italic,
+    codespan: chalk.yellow,
+    del: chalk.dim.gray.strikethrough,
+    link: chalk.blue,
+    href: chalk.blue.underline,
+    // Formatting options
+    width: 80,
+    reflowText: false,
+    emoji: true,
+    tab: 2,
+  })
+);
+
+// Markdown component that renders markdown as formatted terminal text
+const Markdown = ({ children }: { children: string }) => {
+  const rendered = useMemo(() => {
+    if (!children) return "";
+    try {
+      // marked.parse returns ANSI-colored string via marked-terminal
+      return marked.parse(children, { async: false }) as string;
+    } catch {
+      return children; // Fallback to raw text on error
+    }
+  }, [children]);
+
+  // Split by newlines and render each line to preserve ANSI codes
+  const lines = rendered.split("\n");
+  return (
+    <>
+      {lines.map((line, i) => (
+        <Text key={`line-${i}-${line.length}`}>{line || " "}</Text>
+      ))}
+    </>
+  );
+};
 
 const openai = new OpenAI({
   baseURL: process.env.BASE_URL,
