@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { render, Box, Text } from "ink";
+import { render, Box, Text, Spacer } from "ink";
 import TextInput from "ink-text-input";
+import Markdown from "ink-markdown";
 import OpenAI from "openai";
 import { config } from "dotenv";
 
@@ -55,25 +56,32 @@ const SudoHabla = () => {
   };
 
   return (
-    <Box flexDirection="column" padding={1}>
+    <Box flexDirection="column" height="100%" padding={1}>
+      {/* Header - always at top */}
       <Box marginBottom={1}>
         <Text color="cyan" bold>
-          🌮 sudo-habla v0.1
+          🦈 sudo-habla v0.1
         </Text>
       </Box>
 
-      {output && (
-        <Box
-          marginBottom={1}
-          borderStyle="round"
-          borderColor="gray"
-          paddingX={1}
-        >
-          <Text>{output}</Text>
-        </Box>
-      )}
+      {/* Output area - grows to fill available space */}
+      <Box flexDirection="column" flexGrow={1} overflow="hidden">
+        {output && (
+          <Box
+            marginBottom={1}
+            borderStyle="round"
+            borderColor="gray"
+            paddingX={1}
+            flexDirection="column"
+          >
+            <Markdown>{output}</Markdown>
+          </Box>
+        )}
+        <Spacer />
+      </Box>
 
-      <Box>
+      {/* Input area - always anchored at bottom */}
+      <Box marginTop={1}>
         <Box marginRight={1}>
           <Text color="green">❯</Text>
         </Box>
