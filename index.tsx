@@ -1,3 +1,5 @@
+#!/usr/bin/env bun
+
 import React, { useState, useMemo } from "react";
 import { render, Box, Text, Spacer } from "ink";
 import TextInput from "ink-text-input";
@@ -30,7 +32,7 @@ marked.use(
     reflowText: false,
     emoji: true,
     tab: 2,
-  })
+  }),
 );
 
 // Markdown component that renders markdown as formatted terminal text
@@ -61,11 +63,11 @@ const getGitRoastData = async (): Promise<string> => {
   try {
     // Try git diff first
     const diffResult = await $`git diff`.quiet().text();
-    
+
     if (diffResult.trim()) {
       return diffResult.slice(0, 2000);
     }
-    
+
     // Fallback to last commit stats if no uncommitted changes
     const showResult = await $`git show HEAD --stat`.quiet().text();
     return showResult.slice(0, 2000);
