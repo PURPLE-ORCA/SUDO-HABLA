@@ -40,16 +40,24 @@ async function main() {
     s.start("Asking the senior dev...");
 
     try {
-      const response = await openai.chat.completions.create({
-        model: process.env.MODEL || "gpt-3.5-turbo",
+      const stream = await openai.chat.completions.create({
+        model: process.env.MODEL || 'gpt-3.5-turbo',
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userInput.toString() },
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userInput.toString() }
         ],
+        stream: true, // This is the magic word
       });
-
-      // Stop the spinner and print the output
-      s.stop("Done.\n\n" + (response.choices[0]?.message?.content ?? "No response received") + "\n");
+      
+      // Stop the spinner the millisecond the API connects
+      s.stop('Senior dev is speaking:');
+      
+      // Stream the chunks directly to the terminal
+      for await (const chunk of stream) {
+        process.stdout.write(chunk.choices[0]?.delta?.content || '');
+      }
+      console.log('\n'); // Clean newline when it finishes
+      
     } catch (error: any) {
       s.stop(`Error: ${error.message}. Is your API key actually valid?`);
     }
