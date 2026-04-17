@@ -1,6 +1,6 @@
 {
   "name": "sudo-habla",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A cynical, senior dev AI that roasts your code in Spanish.",
   "main": "index.tsx",
   "bin": {
