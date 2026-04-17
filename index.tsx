@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { render, Box, Text, Spacer } from "ink";
 import TextInput from "ink-text-input";
 import { marked } from "marked";
@@ -8,10 +8,8 @@ import { marked } from "marked";
 import { markedTerminal } from "marked-terminal";
 import chalk from "chalk";
 import OpenAI from "openai";
-import { config } from "dotenv";
 import { $ } from "bun";
-
-config();
+import { readConfig, writeConfig, deleteConfig } from "./config";
 
 // Configure marked to use terminal renderer via extension
 marked.use(
@@ -77,11 +75,6 @@ const getGitRoastData = async (): Promise<string> => {
   }
 };
 
-const openai = new OpenAI({
-  baseURL: process.env.BASE_URL,
-  apiKey: process.env.API_KEY,
-});
-
 const SYSTEM_PROMPT = `
 You are a cynical, senior software engineer teaching a junior developer Spanish. 
 Teach simple, repeatable, practical phrases. 
@@ -92,13 +85,55 @@ Format beautifully using markdown.
 `;
 
 const SudoHabla = () => {
+  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [apiKeyInput, setApiKeyInput] = useState("");
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [output, setOutput] = useState("");
 
+  // Check for stored config on mount
+  useEffect(() => {
+    const loadConfig = async () => {
+      const config = await readConfig();
+      if (config?.apiKey) {
+        setApiKey(config.apiKey);
+      }
+    };
+    loadConfig();
+  }, []);
+
+  const openai = useMemo(() => {
+    if (!apiKey) return null;
+    return new OpenAI({
+      baseURL: process.env.BASE_URL,
+      apiKey: apiKey,
+    });
+  }, [apiKey]);
+
+  const handleApiKeySubmit = async (value: string) => {
+    if (!value.trim()) return;
+    await writeConfig(value.trim());
+    setApiKey(value.trim());
+    setApiKeyInput("");
+  };
+
   const handleSubmit = async (query: string) => {
     if (!query.trim()) return;
     if (query === "/exit") process.exit(0);
+
+    // Handle /config command to clear API key and trigger onboarding
+    if (query === "/config") {
+      deleteConfig();
+      setApiKey(null);
+      setApiKeyInput("");
+      setOutput("🔑 API key cleared. Configure a new one below.");
+      return;
+    }
+
+    if (!openai) {
+      setOutput("Error: No API key configured. Run /config to set one up.");
+      return;
+    }
 
     setInput("");
     setOutput("");
@@ -140,6 +175,40 @@ ${gitData}`;
     }
   };
 
+  // Onboarding view when no API key
+  if (apiKey === null) {
+    return (
+      <Box flexDirection="column" height="100%" padding={1}>
+        <Box marginBottom={1}>
+          <Text color="cyan" bold>
+            🦈 sudo-habla v0.1
+          </Text>
+        </Box>
+
+        <Box flexDirection="column" flexGrow={1} justifyContent="center">
+          <Box marginBottom={1}>
+            <Text color="yellow">No API key detected.</Text>
+          </Box>
+          <Box marginBottom={1}>
+            <Text>Enter your OpenAI/Fireworks API Key:</Text>
+          </Box>
+          <Box>
+            <Box marginRight={1}>
+              <Text color="green">❯</Text>
+            </Box>
+            <TextInput
+              value={apiKeyInput}
+              onChange={setApiKeyInput}
+              onSubmit={handleApiKeySubmit}
+              mask="*"
+              placeholder="sk-..."
+            />
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
+
   return (
     <Box flexDirection="column" height="100%" padding={1}>
       {/* Header - always at top */}
@@ -177,7 +246,7 @@ ${gitData}`;
             value={input}
             onChange={setInput}
             onSubmit={handleSubmit}
-            placeholder="/lore, /roast, /meaning <word>, /exit"
+            placeholder="/lore, /roast, /meaning <word>, /config, /exit"
           />
         )}
       </Box>
