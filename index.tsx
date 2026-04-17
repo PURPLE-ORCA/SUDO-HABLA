@@ -13,23 +13,14 @@ import { streamText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { readConfig, writeConfig, deleteConfig, type Config, type Provider } from "./config";
-
-const geminiModels = [
-  { label: "Gemini 3.1 Flash Lite", value: "gemini-3.1-flash-lite-preview" },
-  { label: "Gemini 2.5 Flash", value: "gemini-2.5-flash" },
-];
-
-const openaiModels = [
-  { label: "GPT-3.5 Turbo", value: "gpt-3.5-turbo" },
-  { label: "GPT-4o", value: "gpt-4o" },
-];
+import { fetchProviderModels, type SelectItem } from "./fetcher";
 
 const providerItems = [
   { label: "Gemini", value: "gemini" },
   { label: "OpenAI", value: "openai" },
 ];
 
-type OnboardingStep = "PROVIDER_SELECT" | "API_KEY_INPUT" | "MODEL_SELECT";
+type OnboardingStep = "PROVIDER_SELECT" | "API_KEY_INPUT" | "LOADING_MODELS" | "MODEL_SELECT";
 
 // Configure marked to use terminal renderer via extension
 marked.use(
@@ -109,6 +100,8 @@ const SudoHabla = () => {
   const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>("PROVIDER_SELECT");
   const [pendingProvider, setPendingProvider] = useState<Provider | null>(null);
   const [pendingApiKey, setPendingApiKey] = useState("");
+  const [availableModels, setAvailableModels] = useState<SelectItem[]>([]);
+  const [onboardingError, setOnboardingError] = useState("");
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [output, setOutput] = useState("");
@@ -124,6 +117,8 @@ const SudoHabla = () => {
 
   const handleProviderSelect = (item: { value: string }) => {
     setPendingProvider(item.value as Provider);
+    setAvailableModels([]);
+    setOnboardingError("");
     setOnboardingStep("API_KEY_INPUT");
   };
 
@@ -133,7 +128,24 @@ const SudoHabla = () => {
     if (!trimmed) return;
 
     setPendingApiKey(trimmed);
-    setOnboardingStep("MODEL_SELECT");
+
+    if (!pendingProvider) return;
+
+    setOnboardingStep("LOADING_MODELS");
+
+    try {
+      const models = await fetchProviderModels(pendingProvider, trimmed);
+      if (!models.length) {
+        throw new Error("No compatible models found for this provider.");
+      }
+
+      setAvailableModels(models);
+      setOnboardingError("");
+      setOnboardingStep("MODEL_SELECT");
+    } catch (error: any) {
+      setOnboardingError(error.message);
+      setOnboardingStep("API_KEY_INPUT");
+    }
   };
 
   const handleModelSelect = async (item: { value: string }) => {
@@ -152,6 +164,8 @@ const SudoHabla = () => {
     setConfig(nextConfig);
     setPendingProvider(null);
     setPendingApiKey("");
+    setAvailableModels([]);
+    setOnboardingError("");
     setOnboardingStep("PROVIDER_SELECT");
   };
 
@@ -166,6 +180,8 @@ const SudoHabla = () => {
       setOnboardingStep("PROVIDER_SELECT");
       setPendingProvider(null);
       setPendingApiKey("");
+      setAvailableModels([]);
+      setOnboardingError("");
       setOutput("🔑 Config cleared. Configure a new one below.");
       return;
     }
@@ -227,10 +243,12 @@ ${gitData}`;
 
   // Onboarding view when no config
   if (config === null) {
+    const modelItems = availableModels;
+
     return (
       <Box flexDirection="column" height="100%" padding={1}>
         <Box marginBottom={1}>
-          <Text color="cyan" bold>
+          <Text color="#decOad" bold>
             🦈 sudo-habla v0.1
           </Text>
         </Box>
@@ -245,16 +263,23 @@ ${gitData}`;
                 ? "Select your provider"
                 : onboardingStep === "API_KEY_INPUT"
                   ? "Enter the API Key for your provider:"
+                : onboardingStep === "LOADING_MODELS"
+                  ? "Fetching available models..."
                   : "Select the model for your provider"}
             </Text>
           </Box>
+          {onboardingError ? (
+            <Box marginBottom={1}>
+              <Text color="red">{onboardingError}</Text>
+            </Box>
+          ) : null}
           {onboardingStep === "PROVIDER_SELECT" ? (
             <SelectInput items={providerItems} onSelect={handleProviderSelect} />
           ) : null}
           {onboardingStep === "API_KEY_INPUT" ? (
             <Box>
               <Box marginRight={1}>
-                <Text color="green">❯</Text>
+                <Text color="#decOad">❯</Text>
               </Box>
               <TextInput
                 value={pendingApiKey}
@@ -265,9 +290,12 @@ ${gitData}`;
               />
             </Box>
           ) : null}
+          {onboardingStep === "LOADING_MODELS" ? (
+            <Text color="yellow">Fetching available models...</Text>
+          ) : null}
           {onboardingStep === "MODEL_SELECT" ? (
             <SelectInput
-              items={pendingProvider === "gemini" ? geminiModels : openaiModels}
+              items={modelItems}
               onSelect={handleModelSelect}
             />
           ) : null}
@@ -280,7 +308,7 @@ ${gitData}`;
     <Box flexDirection="column" height="100%" padding={1}>
       {/* Header - always at top */}
       <Box marginBottom={1}>
-        <Text color="cyan" bold>
+        <Text color="#decOad" bold>
           🦈 sudo-habla v0.1
         </Text>
       </Box>
@@ -291,7 +319,7 @@ ${gitData}`;
           <Box
             marginBottom={1}
             borderStyle="round"
-            borderColor="gray"
+            borderColor="#decOad"
             paddingX={1}
             flexDirection="column"
           >
@@ -304,10 +332,10 @@ ${gitData}`;
       {/* Input area - always anchored at bottom */}
       <Box marginTop={1}>
         <Box marginRight={1}>
-          <Text color="green">❯</Text>
+          <Text color="#decOad">❯</Text>
         </Box>
         {isStreaming ? (
-          <Text color="yellow">El senior está escribiendo...</Text>
+          <Text color="#decOad">El senior está escribiendo...</Text>
         ) : (
           <TextInput
             value={input}
