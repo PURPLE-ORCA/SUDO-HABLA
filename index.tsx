@@ -7,9 +7,11 @@ import { marked } from "marked";
 // @ts-ignore - marked-terminal lacks TypeScript definitions
 import { markedTerminal } from "marked-terminal";
 import chalk from "chalk";
-import OpenAI from "openai";
 import { $ } from "bun";
-import { readConfig, writeConfig, deleteConfig } from "./config";
+import { streamText } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { readConfig, writeConfig, deleteConfig, type Config, type Provider } from "./config";
 
 // Configure marked to use terminal renderer via extension
 marked.use(
@@ -85,8 +87,11 @@ Format beautifully using markdown.
 `;
 
 const SudoHabla = () => {
-  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [config, setConfig] = useState<Config | null>(null);
+  const [pendingProvider, setPendingProvider] = useState<Provider | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
+  const [providerInput, setProviderInput] = useState("");
+  const [onboardingError, setOnboardingError] = useState("");
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [output, setOutput] = useState("");
@@ -95,43 +100,72 @@ const SudoHabla = () => {
   useEffect(() => {
     const loadConfig = async () => {
       const config = await readConfig();
-      if (config?.apiKey) {
-        setApiKey(config.apiKey);
-      }
+      setConfig(config);
     };
     loadConfig();
   }, []);
 
-  const openai = useMemo(() => {
-    if (!apiKey) return null;
-    return new OpenAI({
-      baseURL: process.env.BASE_URL,
-      apiKey: apiKey,
-    });
-  }, [apiKey]);
+  const handleOnboardingSubmit = async (value: string) => {
+    const trimmed = value.trim();
 
-  const handleApiKeySubmit = async (value: string) => {
-    if (!value.trim()) return;
-    await writeConfig(value.trim());
-    setApiKey(value.trim());
+    if (!pendingProvider) {
+      const provider = trimmed.toLowerCase();
+
+      if (provider !== "gemini" && provider !== "openai") {
+        setOnboardingError('Type "gemini" or "openai".');
+        return;
+      }
+
+      setPendingProvider(provider);
+      setProviderInput("");
+      setApiKeyInput("");
+      setOnboardingError("");
+      return;
+    }
+
+    if (!trimmed) return;
+
+    const nextConfig: Config = {
+      activeProvider: pendingProvider,
+      apiKeys: {
+        gemini: pendingProvider === "gemini" ? trimmed : "",
+        openai: pendingProvider === "openai" ? trimmed : "",
+      },
+    };
+
+    await writeConfig(pendingProvider, trimmed);
+    setConfig(nextConfig);
+    setPendingProvider(null);
     setApiKeyInput("");
+    setProviderInput("");
+    setOnboardingError("");
   };
 
   const handleSubmit = async (query: string) => {
     if (!query.trim()) return;
     if (query === "/exit") process.exit(0);
 
-    // Handle /config command to clear API key and trigger onboarding
+    // Handle /config command to clear config and trigger onboarding
     if (query === "/config") {
       deleteConfig();
-      setApiKey(null);
+      setConfig(null);
+      setPendingProvider(null);
       setApiKeyInput("");
-      setOutput("🔑 API key cleared. Configure a new one below.");
+      setProviderInput("");
+      setOnboardingError("");
+      setOutput("🔑 Config cleared. Configure a new one below.");
       return;
     }
 
-    if (!openai) {
+    if (!config) {
       setOutput("Error: No API key configured. Run /config to set one up.");
+      return;
+    }
+
+    const providerApiKey = config.apiKeys[config.activeProvider];
+
+    if (!providerApiKey) {
+      setOutput(`Error: No ${config.activeProvider} API key configured. Run /config to set one up.`);
       return;
     }
 
@@ -154,19 +188,22 @@ ${gitData}`;
         userContent = query;
       }
 
-      const stream = await openai.chat.completions.create({
-        model: process.env.MODEL || "gpt-3.5-turbo",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userContent },
-        ],
-        stream: true,
+      const model =
+        config.activeProvider === "gemini"
+          ? createGoogleGenerativeAI({ apiKey: config.apiKeys.gemini })("gemini-1.5-flash")
+          : createOpenAI({
+              apiKey: config.apiKeys.openai,
+              baseURL: process.env.BASE_URL,
+            })("gpt-3.5-turbo");
+
+      const { textStream } = await streamText({
+        model,
+        system: SYSTEM_PROMPT,
+        prompt: userContent,
       });
 
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || "";
-        // Append incoming tokens to React state
-        setOutput((prev) => prev + content);
+      for await (const textPart of textStream) {
+        setOutput((prev) => prev + textPart);
       }
     } catch (error: any) {
       setOutput(`Error: ${error.message}`);
@@ -175,8 +212,8 @@ ${gitData}`;
     }
   };
 
-  // Onboarding view when no API key
-  if (apiKey === null) {
+  // Onboarding view when no config
+  if (config === null) {
     return (
       <Box flexDirection="column" height="100%" padding={1}>
         <Box marginBottom={1}>
@@ -187,21 +224,35 @@ ${gitData}`;
 
         <Box flexDirection="column" flexGrow={1} justifyContent="center">
           <Box marginBottom={1}>
-            <Text color="yellow">No API key detected.</Text>
+            <Text color="yellow">No config detected.</Text>
           </Box>
           <Box marginBottom={1}>
-            <Text>Enter your OpenAI/Fireworks API Key:</Text>
+            <Text>
+              {pendingProvider
+                ? 'Enter the API Key for your provider:'
+                : 'Select Provider: Type "gemini" or "openai"'}
+            </Text>
           </Box>
+          {onboardingError ? (
+            <Box marginBottom={1}>
+              <Text color="red">{onboardingError}</Text>
+            </Box>
+          ) : null}
+          {pendingProvider ? (
+            <Box marginBottom={1}>
+              <Text color="gray">Provider: {pendingProvider}</Text>
+            </Box>
+          ) : null}
           <Box>
             <Box marginRight={1}>
               <Text color="green">❯</Text>
             </Box>
             <TextInput
-              value={apiKeyInput}
-              onChange={setApiKeyInput}
-              onSubmit={handleApiKeySubmit}
-              mask="*"
-              placeholder="sk-..."
+              value={pendingProvider ? apiKeyInput : providerInput}
+              onChange={pendingProvider ? setApiKeyInput : setProviderInput}
+              onSubmit={handleOnboardingSubmit}
+              mask={pendingProvider ? "*" : undefined}
+              placeholder={pendingProvider ? "sk-..." : "gemini or openai"}
             />
           </Box>
         </Box>
