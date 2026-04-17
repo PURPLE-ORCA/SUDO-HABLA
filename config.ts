@@ -7,6 +7,7 @@ export type Provider = "gemini" | "openai";
 
 export interface Config {
   activeProvider: Provider;
+  activeModel: string;
   apiKeys: Record<Provider, string>;
 }
 
@@ -19,12 +20,22 @@ export const readConfig = async (): Promise<Config | null> => {
     const parsed = JSON.parse(text) as Partial<Config> & { apiKey?: string };
 
     if (parsed.activeProvider && parsed.apiKeys) {
-      return parsed as Config;
+      return {
+        activeProvider: parsed.activeProvider,
+        activeModel:
+          parsed.activeModel ||
+          (parsed.activeProvider === "gemini" ? "gemini-2.5-flash" : "gpt-3.5-turbo"),
+        apiKeys: {
+          gemini: parsed.apiKeys.gemini ?? "",
+          openai: parsed.apiKeys.openai ?? "",
+        },
+      };
     }
 
     if (typeof parsed.apiKey === "string" && parsed.apiKey) {
       return {
         activeProvider: "openai",
+        activeModel: "gpt-3.5-turbo",
         apiKeys: {
           gemini: "",
           openai: parsed.apiKey,
@@ -40,10 +51,12 @@ export const readConfig = async (): Promise<Config | null> => {
 
 export const writeConfig = async (
   activeProvider: Provider,
+  activeModel: string,
   apiKey: string,
 ): Promise<void> => {
   const config: Config = {
     activeProvider,
+    activeModel,
     apiKeys: {
       gemini: activeProvider === "gemini" ? apiKey : "",
       openai: activeProvider === "openai" ? apiKey : "",

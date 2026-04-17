@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { render, Box, Text, Spacer } from "ink";
 import TextInput from "ink-text-input";
+import SelectInput from "ink-select-input";
 import { marked } from "marked";
 // @ts-ignore - marked-terminal lacks TypeScript definitions
 import { markedTerminal } from "marked-terminal";
@@ -12,6 +13,23 @@ import { streamText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { readConfig, writeConfig, deleteConfig, type Config, type Provider } from "./config";
+
+const geminiModels = [
+  { label: "Gemini 3.1 Flash Lite", value: "gemini-3.1-flash-lite-preview" },
+  { label: "Gemini 2.5 Flash", value: "gemini-2.5-flash" },
+];
+
+const openaiModels = [
+  { label: "GPT-3.5 Turbo", value: "gpt-3.5-turbo" },
+  { label: "GPT-4o", value: "gpt-4o" },
+];
+
+const providerItems = [
+  { label: "Gemini", value: "gemini" },
+  { label: "OpenAI", value: "openai" },
+];
+
+type OnboardingStep = "PROVIDER_SELECT" | "API_KEY_INPUT" | "MODEL_SELECT";
 
 // Configure marked to use terminal renderer via extension
 marked.use(
@@ -88,10 +106,9 @@ Format beautifully using markdown.
 
 const SudoHabla = () => {
   const [config, setConfig] = useState<Config | null>(null);
+  const [onboardingStep, setOnboardingStep] = useState<OnboardingStep>("PROVIDER_SELECT");
   const [pendingProvider, setPendingProvider] = useState<Provider | null>(null);
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [providerInput, setProviderInput] = useState("");
-  const [onboardingError, setOnboardingError] = useState("");
+  const [pendingApiKey, setPendingApiKey] = useState("");
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [output, setOutput] = useState("");
@@ -105,40 +122,37 @@ const SudoHabla = () => {
     loadConfig();
   }, []);
 
-  const handleOnboardingSubmit = async (value: string) => {
+  const handleProviderSelect = (item: { value: string }) => {
+    setPendingProvider(item.value as Provider);
+    setOnboardingStep("API_KEY_INPUT");
+  };
+
+  const handleApiKeySubmit = async (value: string) => {
     const trimmed = value.trim();
-
-    if (!pendingProvider) {
-      const provider = trimmed.toLowerCase();
-
-      if (provider !== "gemini" && provider !== "openai") {
-        setOnboardingError('Type "gemini" or "openai".');
-        return;
-      }
-
-      setPendingProvider(provider);
-      setProviderInput("");
-      setApiKeyInput("");
-      setOnboardingError("");
-      return;
-    }
 
     if (!trimmed) return;
 
+    setPendingApiKey(trimmed);
+    setOnboardingStep("MODEL_SELECT");
+  };
+
+  const handleModelSelect = async (item: { value: string }) => {
+    if (!pendingProvider || !pendingApiKey) return;
+
     const nextConfig: Config = {
       activeProvider: pendingProvider,
+      activeModel: item.value,
       apiKeys: {
-        gemini: pendingProvider === "gemini" ? trimmed : "",
-        openai: pendingProvider === "openai" ? trimmed : "",
+        gemini: pendingProvider === "gemini" ? pendingApiKey : "",
+        openai: pendingProvider === "openai" ? pendingApiKey : "",
       },
     };
 
-    await writeConfig(pendingProvider, trimmed);
+    await writeConfig(pendingProvider, item.value, pendingApiKey);
     setConfig(nextConfig);
     setPendingProvider(null);
-    setApiKeyInput("");
-    setProviderInput("");
-    setOnboardingError("");
+    setPendingApiKey("");
+    setOnboardingStep("PROVIDER_SELECT");
   };
 
   const handleSubmit = async (query: string) => {
@@ -149,10 +163,9 @@ const SudoHabla = () => {
     if (query === "/config") {
       deleteConfig();
       setConfig(null);
+      setOnboardingStep("PROVIDER_SELECT");
       setPendingProvider(null);
-      setApiKeyInput("");
-      setProviderInput("");
-      setOnboardingError("");
+      setPendingApiKey("");
       setOutput("🔑 Config cleared. Configure a new one below.");
       return;
     }
@@ -190,11 +203,11 @@ ${gitData}`;
 
       const model =
         config.activeProvider === "gemini"
-          ? createGoogleGenerativeAI({ apiKey: config.apiKeys.gemini })("gemini-1.5-flash")
+          ? createGoogleGenerativeAI({ apiKey: config.apiKeys.gemini })(config.activeModel)
           : createOpenAI({
               apiKey: config.apiKeys.openai,
               baseURL: process.env.BASE_URL,
-            })("gpt-3.5-turbo");
+            })(config.activeModel);
 
       const { textStream } = await streamText({
         model,
@@ -228,33 +241,36 @@ ${gitData}`;
           </Box>
           <Box marginBottom={1}>
             <Text>
-              {pendingProvider
-                ? 'Enter the API Key for your provider:'
-                : 'Select Provider: Type "gemini" or "openai"'}
+              {onboardingStep === "PROVIDER_SELECT"
+                ? "Select your provider"
+                : onboardingStep === "API_KEY_INPUT"
+                  ? "Enter the API Key for your provider:"
+                  : "Select the model for your provider"}
             </Text>
           </Box>
-          {onboardingError ? (
-            <Box marginBottom={1}>
-              <Text color="red">{onboardingError}</Text>
+          {onboardingStep === "PROVIDER_SELECT" ? (
+            <SelectInput items={providerItems} onSelect={handleProviderSelect} />
+          ) : null}
+          {onboardingStep === "API_KEY_INPUT" ? (
+            <Box>
+              <Box marginRight={1}>
+                <Text color="green">❯</Text>
+              </Box>
+              <TextInput
+                value={pendingApiKey}
+                onChange={setPendingApiKey}
+                onSubmit={handleApiKeySubmit}
+                mask="*"
+                placeholder="sk-..."
+              />
             </Box>
           ) : null}
-          {pendingProvider ? (
-            <Box marginBottom={1}>
-              <Text color="gray">Provider: {pendingProvider}</Text>
-            </Box>
-          ) : null}
-          <Box>
-            <Box marginRight={1}>
-              <Text color="green">❯</Text>
-            </Box>
-            <TextInput
-              value={pendingProvider ? apiKeyInput : providerInput}
-              onChange={pendingProvider ? setApiKeyInput : setProviderInput}
-              onSubmit={handleOnboardingSubmit}
-              mask={pendingProvider ? "*" : undefined}
-              placeholder={pendingProvider ? "sk-..." : "gemini or openai"}
+          {onboardingStep === "MODEL_SELECT" ? (
+            <SelectInput
+              items={pendingProvider === "gemini" ? geminiModels : openaiModels}
+              onSelect={handleModelSelect}
             />
-          </Box>
+          ) : null}
         </Box>
       </Box>
     );
