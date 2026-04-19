@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Box, Spacer, Text } from "ink";
+import { Box, Spacer, Text, useStdout } from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import { marked } from "marked";
@@ -59,6 +59,12 @@ interface ReplProps {
   onConfigReset: () => void;
 }
 
+const getMasteryColor = (mastery = 0) => {
+  if (mastery === 0) return 'red';
+  if (mastery <= 2) return 'yellow';
+  return 'green';
+};
+
 export const Repl = ({ config, onConfigReset }: ReplProps) => {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -69,6 +75,15 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     target?: VocabEntry;
     options?: { label: string; value: string }[];
   }>({ active: false });
+
+  const { stdout } = useStdout();
+  const [dimensions, setDimensions] = useState({ columns: stdout.columns, rows: stdout.rows });
+
+  useEffect(() => {
+    const onResize = () => setDimensions({ columns: stdout.columns, rows: stdout.rows });
+    stdout.on('resize', onResize);
+    return () => { stdout.off('resize', onResize); };
+  }, [stdout]);
 
   useEffect(() => {
     const loadVocab = async () => {
@@ -224,10 +239,20 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
   };
 
   return (
-    <Box flexDirection="row" width="100%" height="100%" padding={1}>
-      <Box flexGrow={1} flexDirection="column" paddingRight={2}>
+    <Box height={dimensions.rows - 1} flexDirection="row" width="100%">
+      <Box
+        flexGrow={1}
+        flexDirection="column"
+        paddingRight={1}
+        borderStyle="single"
+        borderRight={true}
+        borderTop={false}
+        borderBottom={false}
+        borderLeft={false}
+        borderColor="#A855F7"
+      >
         <Box marginBottom={1}>
-          <Text color="red" bold>
+          <Text color="#A855F7" bold>
             🦈 sudo-habla v{packageJson.version}
           </Text>
         </Box>
@@ -267,14 +292,14 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         )}
       </Box>
 
-      <Box width={35} flexDirection="column" borderStyle="single" borderColor="cyan" padding={1}>
-        <Text bold color="cyan" underline>
+      <Box width={35} flexDirection="column" paddingLeft={1}>
+        <Text bold color="#A855F7" underline>
           Cheat Sheet
         </Text>
         <Spacer />
         {vocabList.slice(0, 10).map((v, i) => (
           <Box key={i} flexDirection="column" marginBottom={1}>
-            <Text bold color="yellow">
+            <Text bold color={getMasteryColor(v.mastery)}>
               {v.word}
             </Text>
             <Text dimColor>{v.translation}</Text>
