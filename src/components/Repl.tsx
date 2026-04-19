@@ -160,30 +160,35 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
   };
 
   const handleSubmit = async (query: string) => {
-    const trimmedQuery = query.trim();
-
-    if (trimmedQuery === "/quiz") {
+    if (query.trim() === "/quiz") {
       if (vocabList.length < 4) {
         setOutput("You need at least 4 words in your Cheat Sheet to take a quiz. Run /roast or /meaning first.");
-        return;
+        return; // Stop execution
       }
 
-      const sortedByMastery = [...vocabList].sort((a, b) => (a.mastery ?? 0) - (b.mastery ?? 0));
-      const lowMasteryPool = sortedByMastery.slice(0, Math.max(1, Math.ceil(sortedByMastery.length / 2)));
-      const target = lowMasteryPool[Math.floor(Math.random() * lowMasteryPool.length)];
-      if (!target) {
-        setOutput("Could not build quiz right now. Try again.");
-        return;
-      }
-      const distractors = shuffle(vocabList.filter((entry) => entry.word !== target.word)).slice(0, 3);
-      const options = shuffle([target.translation, ...distractors.map((entry) => entry.translation)]).map(
-        (translation) => ({ label: translation, value: translation }),
-      );
+      // 1. Pick a random target word
+      const targetIndex = Math.floor(Math.random() * vocabList.length);
+      const target = vocabList[targetIndex]!;
 
+      // 2. Pick 3 unique distractors
+      const distractors = vocabList
+        .filter((v) => v.word !== target.word)
+        .sort(() => 0.5 - Math.random())
+        .slice(0, 3);
+
+      // 3. Combine and shuffle the options for the UI
+      const options = [target, ...distractors]
+        .map((v) => ({ label: v.translation, value: v.translation }))
+        .sort(() => 0.5 - Math.random());
+
+      // 4. Trigger the UI state
       setQuiz({ active: true, target, options });
-      setInput("");
+
+      // CRITICAL: Return immediately so we don't call the LLM API
       return;
     }
+
+    const trimmedQuery = query.trim();
 
     if (!trimmedQuery) return;
     if (query === "/exit") process.exit(0);
@@ -241,30 +246,22 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           <Spacer />
         </Box>
 
-        {quiz.active && quiz.target && quiz.options && (
+        {quiz.active && quiz.target && quiz.options ? (
           <Box flexDirection="column" marginY={1} borderStyle="round" borderColor="magenta" paddingX={1}>
             <Text bold color="magenta">
               🧠 Pop Quiz: What does "{quiz.target.word}" mean?
             </Text>
             <SelectInput items={quiz.options} onSelect={handleQuizSubmit} />
           </Box>
-        )}
-
-        {quiz.active ? null : (
-          <Box marginTop={1}>
-            <Box marginRight={1}>
-              <Text color="red">❯</Text>
-            </Box>
-            {isStreaming ? (
-              <Text color="red">El senior está escribiendo...</Text>
-            ) : (
-              <TextInput
-                value={input}
-                onChange={setInput}
-                onSubmit={handleSubmit}
-                placeholder="/lore, /roast, /meaning <word>, /quiz, /config, /exit"
-              />
-            )}
+        ) : (
+          <Box flexDirection="row">
+            <Text color="greenBright">❯ </Text>
+            <TextInput
+              value={input}
+              onChange={setInput}
+              onSubmit={handleSubmit}
+              placeholder="/lore, /roast, /meaning <word>, /quiz, /config, /exit"
+            />
           </Box>
         )}
       </Box>
