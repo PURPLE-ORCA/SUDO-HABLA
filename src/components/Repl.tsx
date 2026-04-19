@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Box, Spacer, Text } from "ink";
 import TextInput from "ink-text-input";
 import { marked } from "marked";
@@ -10,7 +10,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { deleteConfig, type Config } from "../lib/config";
 import { getLatestGitDiff } from "../lib/git";
-import { addVocab } from "../lib/vocab";
+import { addVocab, getVocab, type VocabEntry } from "../lib/vocab";
 import { buildRoastPrompt, SYSTEM_PROMPT } from "../prompts/system";
 
 marked.use(
@@ -61,6 +61,16 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [output, setOutput] = useState("");
+  const [vocabList, setVocabList] = useState<VocabEntry[]>([]);
+
+  useEffect(() => {
+    const loadVocab = async () => {
+      const vocab = await getVocab();
+      setVocabList(vocab);
+    };
+
+    loadVocab();
+  }, []);
 
   const handleSubmit = async (query: string) => {
     if (!query.trim()) return;
@@ -126,6 +136,9 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
       } catch {
         // Ignore malformed vocab blocks from model responses
       }
+
+      const refreshedVocab = await getVocab();
+      setVocabList(refreshedVocab);
     } catch (error: any) {
       setOutput(`Error: ${error.message}`);
     } finally {
@@ -134,42 +147,60 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
   };
 
   return (
-    <Box flexDirection="column" height="100%" padding={1}>
-      <Box marginBottom={1}>
-        <Text color="red" bold>
-          🦈 sudo-habla v0.1
-        </Text>
-      </Box>
-
-      <Box flexDirection="column" flexGrow={1} overflow="hidden">
-        {output && (
-          <Box
-            marginBottom={1}
-            borderStyle="round"
-            borderColor="red"
-            paddingX={1}
-            flexDirection="column"
-          >
-            <Markdown>{output}</Markdown>
-          </Box>
-        )}
-        <Spacer />
-      </Box>
-
-      <Box marginTop={1}>
-        <Box marginRight={1}>
-          <Text color="red">❯</Text>
+    <Box flexDirection="row" width="100%" height="100%" padding={1}>
+      <Box flexGrow={1} flexDirection="column" paddingRight={2}>
+        <Box marginBottom={1}>
+          <Text color="red" bold>
+            🦈 sudo-habla v0.1
+          </Text>
         </Box>
-        {isStreaming ? (
-          <Text color="red">El senior está escribiendo...</Text>
-        ) : (
-          <TextInput
-            value={input}
-            onChange={setInput}
-            onSubmit={handleSubmit}
-            placeholder="/lore, /roast, /meaning <word>, /config, /exit"
-          />
-        )}
+
+        <Box flexDirection="column" flexGrow={1} overflow="hidden">
+          {output && (
+            <Box
+              marginBottom={1}
+              borderStyle="round"
+              borderColor="red"
+              paddingX={1}
+              flexDirection="column"
+            >
+              <Markdown>{output}</Markdown>
+            </Box>
+          )}
+          <Spacer />
+        </Box>
+
+        <Box marginTop={1}>
+          <Box marginRight={1}>
+            <Text color="red">❯</Text>
+          </Box>
+          {isStreaming ? (
+            <Text color="red">El senior está escribiendo...</Text>
+          ) : (
+            <TextInput
+              value={input}
+              onChange={setInput}
+              onSubmit={handleSubmit}
+              placeholder="/lore, /roast, /meaning <word>, /config, /exit"
+            />
+          )}
+        </Box>
+      </Box>
+
+      <Box width={35} flexDirection="column" borderStyle="single" borderColor="cyan" padding={1}>
+        <Text bold color="cyan" underline>
+          Cheat Sheet
+        </Text>
+        <Spacer />
+        {vocabList.slice(0, 10).map((v, i) => (
+          <Box key={i} flexDirection="column" marginBottom={1}>
+            <Text bold color="yellow">
+              {v.word}
+            </Text>
+            <Text dimColor>{v.translation}</Text>
+          </Box>
+        ))}
+        {vocabList.length === 0 && <Text dimColor>No vocab yet. Get roasted.</Text>}
       </Box>
     </Box>
   );

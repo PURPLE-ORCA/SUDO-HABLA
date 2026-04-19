@@ -10,6 +10,20 @@ export type VocabEntry = {
 
 const VOCAB_PATH = path.join(os.homedir(), ".sudo-habla-vocab.json");
 
+export const getVocab = async (): Promise<VocabEntry[]> => {
+  try {
+    const text = await Bun.file(VOCAB_PATH).text();
+    if (!text.trim()) return [];
+
+    const entries = JSON.parse(text) as VocabEntry[];
+    return entries.sort(
+      (a, b) => new Date(b.lastSeen).getTime() - new Date(a.lastSeen).getTime(),
+    );
+  } catch {
+    return [];
+  }
+};
+
 export const addVocab = async (
   newWords: { word: string; translation: string }[],
 ): Promise<void> => {
