@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Box, Spacer, Text, useStdout } from "ink";
+import { Box, Spacer, Text, useInput, useStdout } from "ink";
 import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import { marked } from "marked";
@@ -170,9 +170,12 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
   const isExactCommandMatch = COMMANDS.some(c => c.value === input);
   const showMenu = isTypingCommand && filteredCommands.length > 0 && !isExactCommandMatch;
 
-  const handleCommandSelect = (item: { label: string; value: string }) => {
-    setInput(item.value);
-  };
+  useInput((char, key) => {
+    if (key.tab && showMenu && filteredCommands.length > 0) {
+      const match = filteredCommands[0]!.value;
+      setInput(match.endsWith(' ') ? match : match + ' ');
+    }
+  }, { isActive: showMenu });
 
   const handleQuizSubmit = async (item: { value: string }) => {
     if (!quiz.active || !quiz.target) return;
@@ -313,14 +316,20 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           <Box
             flexDirection="column"
             borderStyle="round"
-            borderColor="cyan"
+            borderColor="#A855F7"
             paddingX={1}
             marginBottom={1}
           >
-            <SelectInput
-              items={filteredCommands}
-              onSelect={handleCommandSelect}
-            />
+            {filteredCommands.map((cmd, i) => (
+              <Text
+                key={cmd.value}
+                color={i === 0 ? 'black' : '#A855F7'}
+                backgroundColor={i === 0 ? '#A855F7' : undefined}
+                bold={i === 0}
+              >
+                {cmd.label} {i === 0 ? ' [Tab to complete]' : ''}
+              </Text>
+            ))}
           </Box>
         )}
 
@@ -343,7 +352,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
               value={input}
               onChange={setInput}
               onSubmit={handleSubmit}
-              focus={!showMenu}
+              focus={!quiz.active}
               placeholder="Type / for commands or ask a question..."
             />
           </Box>
