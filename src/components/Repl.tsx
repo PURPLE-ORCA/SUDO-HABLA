@@ -78,6 +78,7 @@ const getMasteryColor = (mastery = 0) => {
 
 export const Repl = ({ config, onConfigReset }: ReplProps) => {
   const [input, setInput] = useState("");
+  const [inputKey, setInputKey] = useState(0);
   const [isStreaming, setIsStreaming] = useState(false);
   const [history, setHistory] = useState<Message[]>([]);
   const [currentStream, setCurrentStream] = useState("");
@@ -174,6 +175,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     if (key.tab && showMenu && filteredCommands.length > 0) {
       const match = filteredCommands[0]!.value;
       setInput(match.endsWith(' ') ? match : match + ' ');
+      setInputKey((prev) => prev + 1);
     }
   }, { isActive: showMenu });
 
@@ -349,6 +351,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         ) : (
           <Box width="100%" backgroundColor="#3300667f" paddingX={1}>
             <TextInput
+              key={inputKey}
               value={input}
               onChange={setInput}
               onSubmit={handleSubmit}
