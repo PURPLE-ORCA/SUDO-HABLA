@@ -36,6 +36,10 @@ import {
   REVISAR_PROMPT_INJECT,
   SYSTEM_PROMPT,
 } from "../prompts/system";
+import {
+  buildInterviewEvaluationPrompt,
+  buildQuizFeedbackPrompt,
+} from "../prompts/repl";
 import packageJson from "../../package.json";
 
 marked.use(
@@ -239,7 +243,11 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
       const refreshedVocab = await getVocab();
       setVocabList(refreshedVocab);
 
-      const hiddenPrompt = `The user was quizzed on the Spanish technical term "${target.word}". They guessed the translation was "${guess}". This was ${isCorrect ? "CORRECT" : "INCORRECT"}. Provide a brief, cynical response in Spanish followed by the English translation. If they were wrong, mock them. If they were right, act begrudgingly impressed.`;
+      const hiddenPrompt = buildQuizFeedbackPrompt(
+        target.word,
+        guess,
+        isCorrect,
+      );
 
       await streamAssistantResponse(hiddenPrompt);
     } catch (error: any) {
@@ -317,10 +325,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
       const answer = query.trim();
       setInterviewQuestion(null);
 
-      aiPrompt = `Act as a ruthless Principal Engineer conducting a technical interview in Spanish.
-  You asked the candidate: "${interviewQuestion}"
-  The candidate answered: "${answer}"
-  Grade their technical accuracy and their Spanish grammar. Be brutally honest. If they used English, roast them for it. Provide the correct answer in perfect technical Spanish. Remember to append the |||VOCAB||| JSON block at the end.`;
+      aiPrompt = buildInterviewEvaluationPrompt(interviewQuestion, answer);
     } else if (query.trim() === CMD_ENTREVISTA) {
       const question =
         INTERVIEW_QUESTIONS[
