@@ -4,14 +4,11 @@ import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import { writeConfig, type Config, type Provider } from "../lib/config";
 import { fetchProviderModels, type SelectItem } from "../lib/fetcher";
+import { ONBOARDING_PROVIDER_ITEMS } from "../constants/onboarding";
+import { CLI_BRAND_COLOR } from "../constants/ui";
 import packageJson from "../../package.json";
 
 type OnboardingStep = "PROVIDER_SELECT" | "API_KEY_INPUT" | "LOADING_MODELS" | "MODEL_SELECT";
-
-const providerItems = [
-  { label: "Gemini", value: "gemini" },
-  { label: "OpenAI", value: "openai" },
-];
 
 interface OnboardingProps {
   onComplete: (config: Config) => void;
@@ -83,7 +80,7 @@ export const Onboarding = ({ onComplete }: OnboardingProps) => {
   return (
     <Box flexDirection="column" height="100%" padding={1}>
       <Box marginBottom={1}>
-        <Text color="#decOad" bold>
+        <Text color={CLI_BRAND_COLOR} bold>
           🦈 sudo-habla v{packageJson.version}
         </Text>
       </Box>
@@ -109,12 +106,12 @@ export const Onboarding = ({ onComplete }: OnboardingProps) => {
           </Box>
         ) : null}
         {onboardingStep === "PROVIDER_SELECT" ? (
-          <SelectInput items={providerItems} onSelect={handleProviderSelect} />
+          <SelectInput items={ONBOARDING_PROVIDER_ITEMS} onSelect={handleProviderSelect} />
         ) : null}
         {onboardingStep === "API_KEY_INPUT" ? (
           <Box>
             <Box marginRight={1}>
-              <Text color="#decOad">❯</Text>
+              <Text color={CLI_BRAND_COLOR}>❯</Text>
             </Box>
             <TextInput
               value={pendingApiKey}

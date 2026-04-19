@@ -11,8 +11,31 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { deleteConfig, type Config } from "../lib/config";
 import { getLatestGitDiff } from "../lib/git";
-import { addVocab, getVocab, type VocabEntry, updateMastery } from "../lib/vocab";
-import { buildRoastPrompt, DAILY_PROMPT_INJECT, REVISAR_PROMPT_INJECT, SYSTEM_PROMPT } from "../prompts/system";
+import {
+  addVocab,
+  getVocab,
+  type VocabEntry,
+  updateMastery,
+} from "../lib/vocab";
+import {
+  CMD_CONFIG,
+  CMD_DAILY_PREFIX,
+  CMD_ENTREVISTA,
+  CMD_EXIT,
+  CMD_MEANING_PREFIX,
+  CMD_QUIZ,
+  CMD_REVISAR_PREFIX,
+  CMD_ROAST,
+  INTERVIEW_QUESTIONS,
+  REPL_COMMANDS,
+} from "../constants/repl";
+import { CLI_BRAND_COLOR, INPUT_BACKGROUND_COLOR } from "../constants/ui";
+import {
+  buildRoastPrompt,
+  DAILY_PROMPT_INJECT,
+  REVISAR_PROMPT_INJECT,
+  SYSTEM_PROMPT,
+} from "../prompts/system";
 import packageJson from "../../package.json";
 
 marked.use(
@@ -59,32 +82,12 @@ interface ReplProps {
   onConfigReset: () => void;
 }
 
-type Message = { role: 'user' | 'assistant'; text: string };
-
-const COMMANDS = [
-  { label: '/roast - Roast your git diff', value: '/roast' },
-  { label: '/lore - Get a random cynical dev story', value: '/lore' },
-  { label: '/daily <update> - Give your standup update', value: '/daily ' },
-  { label: '/revisar <filepath> - Roast a specific file', value: '/revisar ' },
-  { label: '/entrevista - Start a technical interview', value: '/entrevista' },
-  { label: '/meaning <word> - Translate and explain a term', value: '/meaning ' },
-  { label: '/quiz - Test your vocab mastery', value: '/quiz' },
-  { label: '/config - Change provider/model', value: '/config' },
-  { label: '/exit - Quit the application', value: '/exit' }
-];
-
-const INTERVIEW_QUESTIONS = [
-  "¿Cuál es la diferencia entre una promesa y un callback?",
-  "Explícame qué es el DOM virtual en React.",
-  "¿Por qué usarías Docker en un proyecto nuevo?",
-  "¿Qué es la inyección de SQL y cómo la previenes?",
-  "¿Cómo funciona el Event Loop en Node.js o JavaScript?"
-];
+type Message = { role: "user" | "assistant"; text: string };
 
 const getMasteryColor = (mastery = 0) => {
-  if (mastery === 0) return 'red';
-  if (mastery <= 2) return 'yellow';
-  return 'green';
+  if (mastery === 0) return "red";
+  if (mastery <= 2) return "yellow";
+  return "green";
 };
 
 export const Repl = ({ config, onConfigReset }: ReplProps) => {
@@ -100,15 +103,23 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     target?: VocabEntry;
     options?: { label: string; value: string }[];
   }>({ active: false });
-  const [interviewQuestion, setInterviewQuestion] = useState<string | null>(null);
+  const [interviewQuestion, setInterviewQuestion] = useState<string | null>(
+    null,
+  );
 
   const { stdout } = useStdout();
-  const [dimensions, setDimensions] = useState({ columns: stdout.columns, rows: stdout.rows });
+  const [dimensions, setDimensions] = useState({
+    columns: stdout.columns,
+    rows: stdout.rows,
+  });
 
   useEffect(() => {
-    const onResize = () => setDimensions({ columns: stdout.columns, rows: stdout.rows });
-    stdout.on('resize', onResize);
-    return () => { stdout.off('resize', onResize); };
+    const onResize = () =>
+      setDimensions({ columns: stdout.columns, rows: stdout.rows });
+    stdout.on("resize", onResize);
+    return () => {
+      stdout.off("resize", onResize);
+    };
   }, [stdout]);
 
   useEffect(() => {
@@ -135,12 +146,16 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     const providerApiKey = config.apiKeys[config.activeProvider];
 
     if (!providerApiKey) {
-      throw new Error(`No ${config.activeProvider} API key configured. Run /config to set one up.`);
+      throw new Error(
+        `No ${config.activeProvider} API key configured. Run /config to set one up.`,
+      );
     }
 
     const model =
       config.activeProvider === "gemini"
-        ? createGoogleGenerativeAI({ apiKey: providerApiKey })(config.activeModel)
+        ? createGoogleGenerativeAI({ apiKey: providerApiKey })(
+            config.activeModel,
+          )
         : createOpenAI({
             apiKey: providerApiKey,
             baseURL: process.env.BASE_URL,
@@ -162,9 +177,14 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     const visibleText = fullText.split("|||VOCAB|||")[0] ?? "";
 
     try {
-      const vocabMatch = fullText.match(/\|\|\|VOCAB\|\|\|\s*([\s\S]*?)\s*\|\|\|END_VOCAB\|\|\|/);
+      const vocabMatch = fullText.match(
+        /\|\|\|VOCAB\|\|\|\s*([\s\S]*?)\s*\|\|\|END_VOCAB\|\|\|/,
+      );
       if (vocabMatch?.[1]) {
-        const parsed = JSON.parse(vocabMatch[1]) as { word: string; translation: string }[];
+        const parsed = JSON.parse(vocabMatch[1]) as {
+          word: string;
+          translation: string;
+        }[];
         if (Array.isArray(parsed)) {
           await addVocab(parsed);
         }
@@ -173,30 +193,36 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
       // Ignore malformed vocab blocks from model responses
     }
 
-    setHistory(prev => [...prev, { role: 'assistant', text: visibleText }]);
+    setHistory((prev) => [...prev, { role: "assistant", text: visibleText }]);
     setCurrentStream("");
     const refreshedVocab = await getVocab();
     setVocabList(refreshedVocab);
   };
 
-  const isTypingCommand = input.startsWith('/') && !input.includes(' ');
-  const filteredCommands = COMMANDS.filter(c => c.value.startsWith(input));
-  const isExactCommandMatch = COMMANDS.some(c => c.value === input);
-  const showMenu = isTypingCommand && filteredCommands.length > 0 && !isExactCommandMatch;
+  const isTypingCommand = input.startsWith("/") && !input.includes(" ");
+  const filteredCommands = REPL_COMMANDS.filter((c) =>
+    c.value.startsWith(input),
+  );
+  const isExactCommandMatch = REPL_COMMANDS.some((c) => c.value === input);
+  const showMenu =
+    isTypingCommand && filteredCommands.length > 0 && !isExactCommandMatch;
 
-  useInput((char, key) => {
-    // 1. Toggle Sidebar (Always active)
-    if (key.ctrl && char === 'b') {
-      setShowSidebar(prev => !prev);
-    }
+  useInput(
+    (char, key) => {
+      // 1. Toggle Sidebar (Always active)
+      if (key.ctrl && char === "b") {
+        setShowSidebar((prev) => !prev);
+      }
 
-    // 2. Tab Autocomplete (Only active if menu is showing)
-    if (key.tab && showMenu && filteredCommands.length > 0) {
-      const match = filteredCommands[0]!.value;
-      setInput(match.endsWith(' ') ? match : match + ' ');
-      setInputKey((prev) => prev + 1);
-    }
-  }, { isActive: true }); // CRITICAL: This must be true so Ctrl+B always works
+      // 2. Tab Autocomplete (Only active if menu is showing)
+      if (key.tab && showMenu && filteredCommands.length > 0) {
+        const match = filteredCommands[0]!.value;
+        setInput(match.endsWith(" ") ? match : match + " ");
+        setInputKey((prev) => prev + 1);
+      }
+    },
+    { isActive: true },
+  ); // CRITICAL: This must be true so Ctrl+B always works
 
   const handleQuizSubmit = async (item: { value: string }) => {
     if (!quiz.active || !quiz.target) return;
@@ -217,16 +243,26 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
 
       await streamAssistantResponse(hiddenPrompt);
     } catch (error: any) {
-      setHistory(prev => [...prev, { role: 'assistant', text: `Error: ${error.message}` }]);
+      setHistory((prev) => [
+        ...prev,
+        { role: "assistant", text: `Error: ${error.message}` },
+      ]);
     } finally {
       setIsStreaming(false);
     }
   };
 
   const handleSubmit = async (query: string) => {
-    if (query.trim() === "/quiz") {
+    if (query.trim() === CMD_QUIZ) {
       if (vocabList.length < 4) {
-        setHistory(prev => [...prev, { role: 'user', text: '/quiz' }, { role: 'assistant', text: "You need at least 4 words in your Cheat Sheet to take a quiz. Run /roast or /meaning first." }]);
+        setHistory((prev) => [
+          ...prev,
+          { role: "user", text: CMD_QUIZ },
+          {
+            role: "assistant",
+            text: `You need at least 4 words in your Cheat Sheet to take a quiz. Run ${CMD_ROAST} or ${CMD_MEANING_PREFIX.trim()} first.`,
+          },
+        ]);
         return; // Stop execution
       }
 
@@ -255,18 +291,25 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     const trimmedQuery = query.trim();
 
     if (!trimmedQuery) return;
-    if (query === "/exit") process.exit(0);
+    if (query === CMD_EXIT) process.exit(0);
 
-    if (query === "/config") {
+    if (query === CMD_CONFIG) {
       deleteConfig();
-      setHistory(prev => [...prev, { role: 'user', text: '/config' }, { role: 'assistant', text: "🔑 Config cleared. Configure a new one below." }]);
+      setHistory((prev) => [
+        ...prev,
+        { role: "user", text: CMD_CONFIG },
+        {
+          role: "assistant",
+          text: "🔑 Config cleared. Configure a new one below.",
+        },
+      ]);
       onConfigReset();
       return;
     }
 
     setInput("");
     setCurrentStream("");
-    setHistory(prev => [...prev, { role: 'user', text: query }]);
+    setHistory((prev) => [...prev, { role: "user", text: query }]);
 
     let aiPrompt = query;
 
@@ -278,25 +321,43 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
   You asked the candidate: "${interviewQuestion}"
   The candidate answered: "${answer}"
   Grade their technical accuracy and their Spanish grammar. Be brutally honest. If they used English, roast them for it. Provide the correct answer in perfect technical Spanish. Remember to append the |||VOCAB||| JSON block at the end.`;
-    } else if (query.trim() === '/entrevista') {
-      const question = INTERVIEW_QUESTIONS[Math.floor(Math.random() * INTERVIEW_QUESTIONS.length)]!;
+    } else if (query.trim() === CMD_ENTREVISTA) {
+      const question =
+        INTERVIEW_QUESTIONS[
+          Math.floor(Math.random() * INTERVIEW_QUESTIONS.length)
+        ]!;
       setInterviewQuestion(question);
-      setHistory(prev => [...prev, { role: 'assistant', text: `👔 **ENTREVISTA TÉCNICA:**\n${question}` }]);
+      setHistory((prev) => [
+        ...prev,
+        { role: "assistant", text: `👔 **ENTREVISTA TÉCNICA:**\n${question}` },
+      ]);
       return;
     }
 
-    if (!interviewQuestion && query.startsWith('/daily ')) {
-      const updateText = query.slice(7).trim();
+    if (!interviewQuestion && query.startsWith(CMD_DAILY_PREFIX)) {
+      const updateText = query.slice(CMD_DAILY_PREFIX.length).trim();
       if (!updateText) {
-        setHistory(prev => [...prev, { role: 'assistant', text: "You have to actually give an update, junior. Usage: /daily <your update in English>" }]);
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text: `You have to actually give an update, junior. Usage: ${CMD_DAILY_PREFIX.trim()} <your update in English>`,
+          },
+        ]);
         return;
       }
       aiPrompt = `${DAILY_PROMPT_INJECT}\n\nUser Update: "${updateText}"`;
-    } else if (!interviewQuestion && query.startsWith('/revisar ')) {
-      const filePath = query.slice(9).trim();
+    } else if (!interviewQuestion && query.startsWith(CMD_REVISAR_PREFIX)) {
+      const filePath = query.slice(CMD_REVISAR_PREFIX.length).trim();
 
       if (!filePath) {
-        setHistory(prev => [...prev, { role: 'assistant', text: "I need a file path to roast, junior. Usage: /revisar <src/file.ts>" }]);
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text: `I need a file path to roast, junior. Usage: ${CMD_REVISAR_PREFIX.trim()} <src/file.ts>`,
+          },
+        ]);
         return;
       }
 
@@ -305,14 +366,26 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         const exists = await file.exists();
 
         if (!exists) {
-          setHistory(prev => [...prev, { role: 'assistant', text: `404 Brain Not Found. The file "${filePath}" does not exist in this directory.` }]);
+          setHistory((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              text: `404 Brain Not Found. The file "${filePath}" does not exist in this directory.`,
+            },
+          ]);
           return;
         }
 
         const fileContent = await file.text();
         aiPrompt = `${REVISAR_PROMPT_INJECT}\n\nFile: ${filePath}\n\n\`\`\`\n${fileContent}\n\`\`\``;
       } catch (error) {
-        setHistory(prev => [...prev, { role: 'assistant', text: `I couldn't read the file. Probably a permissions issue, just like your database. Error: ${error}` }]);
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text: `I couldn't read the file. Probably a permissions issue, just like your database. Error: ${error}`,
+          },
+        ]);
         return;
       }
     }
@@ -322,7 +395,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     try {
       let userContent: string;
 
-      if (query === "/roast") {
+      if (query === CMD_ROAST) {
         const gitData = await getLatestGitDiff();
         userContent = buildRoastPrompt(gitData);
       } else {
@@ -331,7 +404,10 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
 
       await streamAssistantResponse(userContent);
     } catch (error: any) {
-      setHistory(prev => [...prev, { role: 'assistant', text: `Error: ${error.message}` }]);
+      setHistory((prev) => [
+        ...prev,
+        { role: "assistant", text: `Error: ${error.message}` },
+      ]);
     } finally {
       setIsStreaming(false);
     }
@@ -348,10 +424,10 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         borderTop={false}
         borderBottom={false}
         borderLeft={false}
-        borderColor="#A855F7"
+        borderColor={CLI_BRAND_COLOR}
       >
         <Box marginBottom={1}>
-          <Text color="#A855F7" bold>
+          <Text color={CLI_BRAND_COLOR} bold>
             🦈 sudo-habla v{packageJson.version}
           </Text>
         </Box>
@@ -377,7 +453,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
             </Box>
           ))}
           {currentStream && (
-            <Box borderStyle="round" borderColor="#A855F7" paddingX={1}>
+            <Box borderStyle="round" borderColor={CLI_BRAND_COLOR} paddingX={1}>
               <Markdown>{currentStream}</Markdown>
             </Box>
           )}
@@ -387,18 +463,18 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           <Box
             flexDirection="column"
             borderStyle="round"
-            borderColor="#A855F7"
+            borderColor={CLI_BRAND_COLOR}
             paddingX={1}
             marginBottom={1}
           >
             {filteredCommands.map((cmd, i) => (
               <Text
                 key={cmd.value}
-                color={i === 0 ? 'black' : '#A855F7'}
-                backgroundColor={i === 0 ? '#A855F7' : undefined}
+                color={i === 0 ? "black" : CLI_BRAND_COLOR}
+                backgroundColor={i === 0 ? CLI_BRAND_COLOR : undefined}
                 bold={i === 0}
               >
-                {cmd.label} {i === 0 ? ' [Tab to complete]' : ''}
+                {cmd.label} {i === 0 ? " [Tab to complete]" : ""}
               </Text>
             ))}
           </Box>
@@ -418,14 +494,22 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
             <SelectInput items={quiz.options} onSelect={handleQuizSubmit} />
           </Box>
         ) : (
-          <Box width="100%" backgroundColor="#3300667f" paddingX={1}>
+          <Box
+            width="100%"
+            backgroundColor={INPUT_BACKGROUND_COLOR}
+            paddingX={1}
+          >
             <TextInput
               key={inputKey}
               value={input}
               onChange={setInput}
               onSubmit={handleSubmit}
               focus={!quiz.active}
-              placeholder={interviewQuestion ? "Type your answer in Spanish..." : "Type / for commands or ask a question..."}
+              placeholder={
+                interviewQuestion
+                  ? "Type your answer in Spanish..."
+                  : "Type / for commands or ask a question..."
+              }
             />
           </Box>
         )}
@@ -433,7 +517,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
 
       {showSidebar && (
         <Box width={35} flexDirection="column" paddingLeft={1}>
-          <Text bold color="#A855F7" underline>
+          <Text bold color={CLI_BRAND_COLOR} underline>
             Cheat Sheet
           </Text>
           <Spacer />
