@@ -40,6 +40,24 @@ import {
   buildInterviewEvaluationPrompt,
   buildQuizFeedbackPrompt,
 } from "../prompts/repl";
+import {
+  buildDailyUsageMessage,
+  buildFileReadErrorMessage,
+  buildGenericErrorMessage,
+  buildInterviewHeaderMessage,
+  buildMissingApiKeyMessage,
+  buildMissingFileMessage,
+  buildQuizRequiresWordsMessage,
+  buildRevisarUsageMessage,
+  CHEAT_SHEET_TITLE,
+  CONFIG_CLEARED_MESSAGE,
+  INPUT_PLACEHOLDER_DEFAULT,
+  INPUT_PLACEHOLDER_INTERVIEW,
+  NO_VOCAB_MESSAGE,
+  POP_QUIZ_TITLE_PREFIX,
+  POP_QUIZ_TITLE_SUFFIX,
+  TAB_COMPLETE_HINT,
+} from "../prompts/messages";
 import packageJson from "../../package.json";
 
 marked.use(
@@ -150,9 +168,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     const providerApiKey = config.apiKeys[config.activeProvider];
 
     if (!providerApiKey) {
-      throw new Error(
-        `No ${config.activeProvider} API key configured. Run /config to set one up.`,
-      );
+      throw new Error(buildMissingApiKeyMessage(config.activeProvider));
     }
 
     const model =
@@ -253,7 +269,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     } catch (error: any) {
       setHistory((prev) => [
         ...prev,
-        { role: "assistant", text: `Error: ${error.message}` },
+        { role: "assistant", text: buildGenericErrorMessage(error.message) },
       ]);
     } finally {
       setIsStreaming(false);
@@ -268,7 +284,10 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           { role: "user", text: CMD_QUIZ },
           {
             role: "assistant",
-            text: `You need at least 4 words in your Cheat Sheet to take a quiz. Run ${CMD_ROAST} or ${CMD_MEANING_PREFIX.trim()} first.`,
+            text: buildQuizRequiresWordsMessage(
+              CMD_ROAST,
+              CMD_MEANING_PREFIX.trim(),
+            ),
           },
         ]);
         return; // Stop execution
@@ -308,7 +327,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         { role: "user", text: CMD_CONFIG },
         {
           role: "assistant",
-          text: "🔑 Config cleared. Configure a new one below.",
+          text: CONFIG_CLEARED_MESSAGE,
         },
       ]);
       onConfigReset();
@@ -334,7 +353,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
       setInterviewQuestion(question);
       setHistory((prev) => [
         ...prev,
-        { role: "assistant", text: `👔 **ENTREVISTA TÉCNICA:**\n${question}` },
+        { role: "assistant", text: buildInterviewHeaderMessage(question) },
       ]);
       return;
     }
@@ -346,7 +365,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           ...prev,
           {
             role: "assistant",
-            text: `You have to actually give an update, junior. Usage: ${CMD_DAILY_PREFIX.trim()} <your update in English>`,
+            text: buildDailyUsageMessage(CMD_DAILY_PREFIX.trim()),
           },
         ]);
         return;
@@ -360,7 +379,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           ...prev,
           {
             role: "assistant",
-            text: `I need a file path to roast, junior. Usage: ${CMD_REVISAR_PREFIX.trim()} <src/file.ts>`,
+            text: buildRevisarUsageMessage(CMD_REVISAR_PREFIX.trim()),
           },
         ]);
         return;
@@ -375,7 +394,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
             ...prev,
             {
               role: "assistant",
-              text: `404 Brain Not Found. The file "${filePath}" does not exist in this directory.`,
+              text: buildMissingFileMessage(filePath),
             },
           ]);
           return;
@@ -385,13 +404,13 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         aiPrompt = `${REVISAR_PROMPT_INJECT}\n\nFile: ${filePath}\n\n\`\`\`\n${fileContent}\n\`\`\``;
       } catch (error) {
         setHistory((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            text: `I couldn't read the file. Probably a permissions issue, just like your database. Error: ${error}`,
-          },
-        ]);
-        return;
+            ...prev,
+            {
+              role: "assistant",
+              text: buildFileReadErrorMessage(error),
+            },
+          ]);
+          return;
       }
     }
 
@@ -411,7 +430,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     } catch (error: any) {
       setHistory((prev) => [
         ...prev,
-        { role: "assistant", text: `Error: ${error.message}` },
+        { role: "assistant", text: buildGenericErrorMessage(error.message) },
       ]);
     } finally {
       setIsStreaming(false);
@@ -479,7 +498,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
                 backgroundColor={i === 0 ? CLI_BRAND_COLOR : undefined}
                 bold={i === 0}
               >
-                {cmd.label} {i === 0 ? " [Tab to complete]" : ""}
+                {cmd.label} {i === 0 ? TAB_COMPLETE_HINT : ""}
               </Text>
             ))}
           </Box>
@@ -494,7 +513,9 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
             paddingX={1}
           >
             <Text bold color="magenta">
-              🧠 Pop Quiz: What does "{quiz.target.word}" mean?
+              {POP_QUIZ_TITLE_PREFIX}
+              {quiz.target.word}
+              {POP_QUIZ_TITLE_SUFFIX}
             </Text>
             <SelectInput items={quiz.options} onSelect={handleQuizSubmit} />
           </Box>
@@ -512,8 +533,8 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
               focus={!quiz.active}
               placeholder={
                 interviewQuestion
-                  ? "Type your answer in Spanish..."
-                  : "Type / for commands or ask a question..."
+                  ? INPUT_PLACEHOLDER_INTERVIEW
+                  : INPUT_PLACEHOLDER_DEFAULT
               }
             />
           </Box>
@@ -523,7 +544,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
       {showSidebar && (
         <Box width={35} flexDirection="column" paddingLeft={1}>
           <Text bold color={CLI_BRAND_COLOR} underline>
-            Cheat Sheet
+            {CHEAT_SHEET_TITLE}
           </Text>
           <Spacer />
           {vocabList.slice(0, 10).map((v, i) => (
@@ -535,7 +556,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
             </Box>
           ))}
           {vocabList.length === 0 && (
-            <Text dimColor>No vocab yet. Get roasted.</Text>
+            <Text dimColor>{NO_VOCAB_MESSAGE}</Text>
           )}
         </Box>
       )}
