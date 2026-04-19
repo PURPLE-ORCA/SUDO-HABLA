@@ -10,6 +10,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { deleteConfig, type Config } from "../lib/config";
 import { getLatestGitDiff } from "../lib/git";
+import { addVocab } from "../lib/vocab";
 import { buildRoastPrompt, SYSTEM_PROMPT } from "../prompts/system";
 
 marked.use(
@@ -107,8 +108,23 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         prompt: userContent,
       });
 
+      let fullText = "";
       for await (const textPart of textStream) {
-        setOutput((prev) => prev + textPart);
+        fullText += textPart;
+        const visibleText = fullText.split("|||VOCAB|||")[0] ?? "";
+        setOutput(visibleText);
+      }
+
+      try {
+        const vocabMatch = fullText.match(/\|\|\|VOCAB\|\|\|\s*([\s\S]*?)\s*\|\|\|END_VOCAB\|\|\|/);
+        if (vocabMatch?.[1]) {
+          const parsed = JSON.parse(vocabMatch[1]) as { word: string; translation: string }[];
+          if (Array.isArray(parsed)) {
+            await addVocab(parsed);
+          }
+        }
+      } catch {
+        // Ignore malformed vocab blocks from model responses
       }
     } catch (error: any) {
       setOutput(`Error: ${error.message}`);
