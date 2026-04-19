@@ -65,10 +65,19 @@ const COMMANDS = [
   { label: '/roast - Roast your git diff', value: '/roast' },
   { label: '/lore - Get a random cynical dev story', value: '/lore' },
   { label: '/daily <update> - Give your standup update', value: '/daily ' },
+  { label: '/entrevista - Start a technical interview', value: '/entrevista' },
   { label: '/meaning <word> - Translate and explain a term', value: '/meaning ' },
   { label: '/quiz - Test your vocab mastery', value: '/quiz' },
   { label: '/config - Change provider/model', value: '/config' },
   { label: '/exit - Quit the application', value: '/exit' }
+];
+
+const INTERVIEW_QUESTIONS = [
+  "¿Cuál es la diferencia entre una promesa y un callback?",
+  "Explícame qué es el DOM virtual en React.",
+  "¿Por qué usarías Docker en un proyecto nuevo?",
+  "¿Qué es la inyección de SQL y cómo la previenes?",
+  "¿Cómo funciona el Event Loop en Node.js o JavaScript?"
 ];
 
 const getMasteryColor = (mastery = 0) => {
@@ -89,6 +98,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     target?: VocabEntry;
     options?: { label: string; value: string }[];
   }>({ active: false });
+  const [interviewQuestion, setInterviewQuestion] = useState<string | null>(null);
 
   const { stdout } = useStdout();
   const [dimensions, setDimensions] = useState({ columns: stdout.columns, rows: stdout.rows });
@@ -234,17 +244,6 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
       return;
     }
 
-    let aiPrompt = query;
-
-    if (query.startsWith('/daily ')) {
-      const updateText = query.slice(7).trim();
-      if (!updateText) {
-        setHistory(prev => [...prev, { role: 'user', text: query }, { role: 'assistant', text: "You have to actually give an update, junior. Usage: /daily <your update in English>" }]);
-        return;
-      }
-      aiPrompt = `${DAILY_PROMPT_INJECT}\n\nUser Update: "${updateText}"`;
-    }
-
     const trimmedQuery = query.trim();
 
     if (!trimmedQuery) return;
@@ -260,6 +259,33 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     setInput("");
     setCurrentStream("");
     setHistory(prev => [...prev, { role: 'user', text: query }]);
+
+    let aiPrompt = query;
+
+    if (interviewQuestion) {
+      const answer = query.trim();
+      setInterviewQuestion(null);
+
+      aiPrompt = `Act as a ruthless Principal Engineer conducting a technical interview in Spanish.
+  You asked the candidate: "${interviewQuestion}"
+  The candidate answered: "${answer}"
+  Grade their technical accuracy and their Spanish grammar. Be brutally honest. If they used English, roast them for it. Provide the correct answer in perfect technical Spanish. Remember to append the |||VOCAB||| JSON block at the end.`;
+    } else if (query.trim() === '/entrevista') {
+      const question = INTERVIEW_QUESTIONS[Math.floor(Math.random() * INTERVIEW_QUESTIONS.length)]!;
+      setInterviewQuestion(question);
+      setHistory(prev => [...prev, { role: 'assistant', text: `👔 **ENTREVISTA TÉCNICA:**\n${question}` }]);
+      return;
+    }
+
+    if (!interviewQuestion && query.startsWith('/daily ')) {
+      const updateText = query.slice(7).trim();
+      if (!updateText) {
+        setHistory(prev => [...prev, { role: 'assistant', text: "You have to actually give an update, junior. Usage: /daily <your update in English>" }]);
+        return;
+      }
+      aiPrompt = `${DAILY_PROMPT_INJECT}\n\nUser Update: "${updateText}"`;
+    }
+
     setIsStreaming(true);
 
     try {
@@ -368,7 +394,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
               onChange={setInput}
               onSubmit={handleSubmit}
               focus={!quiz.active}
-              placeholder="Type / for commands or ask a question..."
+              placeholder={interviewQuestion ? "Type your answer in Spanish..." : "Type / for commands or ask a question..."}
             />
           </Box>
         )}
