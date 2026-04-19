@@ -12,7 +12,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { deleteConfig, type Config } from "../lib/config";
 import { getLatestGitDiff } from "../lib/git";
 import { addVocab, getVocab, type VocabEntry, updateMastery } from "../lib/vocab";
-import { buildRoastPrompt, SYSTEM_PROMPT } from "../prompts/system";
+import { buildRoastPrompt, DAILY_PROMPT_INJECT, SYSTEM_PROMPT } from "../prompts/system";
 import packageJson from "../../package.json";
 
 marked.use(
@@ -64,6 +64,7 @@ type Message = { role: 'user' | 'assistant'; text: string };
 const COMMANDS = [
   { label: '/roast - Roast your git diff', value: '/roast' },
   { label: '/lore - Get a random cynical dev story', value: '/lore' },
+  { label: '/daily <update> - Give your standup update', value: '/daily ' },
   { label: '/meaning <word> - Translate and explain a term', value: '/meaning ' },
   { label: '/quiz - Test your vocab mastery', value: '/quiz' },
   { label: '/config - Change provider/model', value: '/config' },
@@ -233,6 +234,17 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
       return;
     }
 
+    let aiPrompt = query;
+
+    if (query.startsWith('/daily ')) {
+      const updateText = query.slice(7).trim();
+      if (!updateText) {
+        setHistory(prev => [...prev, { role: 'user', text: query }, { role: 'assistant', text: "You have to actually give an update, junior. Usage: /daily <your update in English>" }]);
+        return;
+      }
+      aiPrompt = `${DAILY_PROMPT_INJECT}\n\nUser Update: "${updateText}"`;
+    }
+
     const trimmedQuery = query.trim();
 
     if (!trimmedQuery) return;
@@ -257,7 +269,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         const gitData = await getLatestGitDiff();
         userContent = buildRoastPrompt(gitData);
       } else {
-        userContent = query;
+        userContent = aiPrompt;
       }
 
       await streamAssistantResponse(userContent);

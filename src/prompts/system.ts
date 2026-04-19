@@ -9,6 +9,12 @@ At the VERY END of every response, you MUST append a hidden data block containin
 |||VOCAB||| [{"word": "el despliegue", "translation": "the deployment"}] |||END_VOCAB|||
 `;
 
+export const DAILY_PROMPT_INJECT = `Act as a cynical, hostile Scrum Master. The user is providing their daily standup update in English.
+1. Translate their update into perfect, native technical Spanish.
+2. Brutally mock their low velocity or trivial accomplishments in Spanish (with English translations in parentheses).
+3. Provide a 'Mejor dicho' (Better phrasing) section showing them how a real senior dev would have delivered that update.
+Remember to strictly follow the system prompt rules, including the hidden |||VOCAB||| JSON block at the very end.`;
+
 export const ROAST_CONSTRAINTS = `Here is my git diff. Roast this code and my technical skills in MAXIMUM 3 short sentences. Give the roast in Spanish, followed immediately by the English translation. Be cynical, do not use tables, and do not yap.
 
 Then append a new section titled '💡 El Arreglo (The Fix)'. In one concise, bilingual sentence, cynically correct their technical mistake with the specific pattern or fix they should use. Spanish first, then English translation immediately after.`;
