@@ -13,6 +13,7 @@ import { deleteConfig, type Config } from "../lib/config";
 import { getLatestGitDiff } from "../lib/git";
 import { addVocab, getVocab, type VocabEntry, updateMastery } from "../lib/vocab";
 import { buildRoastPrompt, SYSTEM_PROMPT } from "../prompts/system";
+import packageJson from "../../package.json";
 
 marked.use(
   markedTerminal({
@@ -227,7 +228,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
       <Box flexGrow={1} flexDirection="column" paddingRight={2}>
         <Box marginBottom={1}>
           <Text color="red" bold>
-            🦈 sudo-habla v0.1
+            🦈 sudo-habla v{packageJson.version}
           </Text>
         </Box>
 

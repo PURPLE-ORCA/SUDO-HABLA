@@ -4,6 +4,7 @@ import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import { writeConfig, type Config, type Provider } from "../lib/config";
 import { fetchProviderModels, type SelectItem } from "../lib/fetcher";
+import packageJson from "../../package.json";
 
 type OnboardingStep = "PROVIDER_SELECT" | "API_KEY_INPUT" | "LOADING_MODELS" | "MODEL_SELECT";
 
@@ -83,7 +84,7 @@ export const Onboarding = ({ onComplete }: OnboardingProps) => {
     <Box flexDirection="column" height="100%" padding={1}>
       <Box marginBottom={1}>
         <Text color="#decOad" bold>
-          🦈 sudo-habla v0.1
+          🦈 sudo-habla v{packageJson.version}
         </Text>
       </Box>
 
