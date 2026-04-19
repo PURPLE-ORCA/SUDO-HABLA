@@ -12,7 +12,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { deleteConfig, type Config } from "../lib/config";
 import { getLatestGitDiff } from "../lib/git";
 import { addVocab, getVocab, type VocabEntry, updateMastery } from "../lib/vocab";
-import { buildRoastPrompt, DAILY_PROMPT_INJECT, SYSTEM_PROMPT } from "../prompts/system";
+import { buildRoastPrompt, DAILY_PROMPT_INJECT, REVISAR_PROMPT_INJECT, SYSTEM_PROMPT } from "../prompts/system";
 import packageJson from "../../package.json";
 
 marked.use(
@@ -65,6 +65,7 @@ const COMMANDS = [
   { label: '/roast - Roast your git diff', value: '/roast' },
   { label: '/lore - Get a random cynical dev story', value: '/lore' },
   { label: '/daily <update> - Give your standup update', value: '/daily ' },
+  { label: '/revisar <filepath> - Roast a specific file', value: '/revisar ' },
   { label: '/entrevista - Start a technical interview', value: '/entrevista' },
   { label: '/meaning <word> - Translate and explain a term', value: '/meaning ' },
   { label: '/quiz - Test your vocab mastery', value: '/quiz' },
@@ -284,6 +285,29 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         return;
       }
       aiPrompt = `${DAILY_PROMPT_INJECT}\n\nUser Update: "${updateText}"`;
+    } else if (!interviewQuestion && query.startsWith('/revisar ')) {
+      const filePath = query.slice(9).trim();
+
+      if (!filePath) {
+        setHistory(prev => [...prev, { role: 'assistant', text: "I need a file path to roast, junior. Usage: /revisar <src/file.ts>" }]);
+        return;
+      }
+
+      try {
+        const file = Bun.file(filePath);
+        const exists = await file.exists();
+
+        if (!exists) {
+          setHistory(prev => [...prev, { role: 'assistant', text: `404 Brain Not Found. The file "${filePath}" does not exist in this directory.` }]);
+          return;
+        }
+
+        const fileContent = await file.text();
+        aiPrompt = `${REVISAR_PROMPT_INJECT}\n\nFile: ${filePath}\n\n\`\`\`\n${fileContent}\n\`\`\``;
+      } catch (error) {
+        setHistory(prev => [...prev, { role: 'assistant', text: `I couldn't read the file. Probably a permissions issue, just like your database. Error: ${error}` }]);
+        return;
+      }
     }
 
     setIsStreaming(true);
