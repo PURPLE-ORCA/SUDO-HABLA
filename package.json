@@ -2,13 +2,13 @@
   "name": "sudo-habla",
   "version": "1.1.0",
   "description": "A cynical, senior dev AI that roasts your code in Spanish.",
-  "main": "index.tsx",
+  "main": "src/index.tsx",
   "bin": {
-    "sudo-habla": "./index.tsx"
+    "sudo-habla": "./src/index.tsx"
   },
   "type": "module",
   "scripts": {
-    "dev": "bun run index.tsx"
+    "dev": "bun run src/index.tsx"
   },
   "devDependencies": {
     "@types/bun": "latest",
