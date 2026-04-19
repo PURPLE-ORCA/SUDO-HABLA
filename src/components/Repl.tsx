@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Box, Spacer, Text } from "ink";
+import SelectInput from "ink-select-input";
 import TextInput from "ink-text-input";
 import { marked } from "marked";
 // @ts-ignore - marked-terminal lacks TypeScript definitions
@@ -10,7 +11,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { deleteConfig, type Config } from "../lib/config";
 import { getLatestGitDiff } from "../lib/git";
-import { addVocab, getVocab, type VocabEntry } from "../lib/vocab";
+import { addVocab, getVocab, type VocabEntry, updateMastery } from "../lib/vocab";
 import { buildRoastPrompt, SYSTEM_PROMPT } from "../prompts/system";
 
 marked.use(
@@ -62,6 +63,11 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [output, setOutput] = useState("");
   const [vocabList, setVocabList] = useState<VocabEntry[]>([]);
+  const [quiz, setQuiz] = useState<{
+    active: boolean;
+    target?: VocabEntry;
+    options?: { label: string; value: string }[];
+  }>({ active: false });
 
   useEffect(() => {
     const loadVocab = async () => {
@@ -72,21 +78,120 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     loadVocab();
   }, []);
 
+  const shuffle = <T,>(items: T[]): T[] => {
+    const shuffled = [...items];
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const current = shuffled[i]!;
+      shuffled[i] = shuffled[j]!;
+      shuffled[j] = current;
+    }
+    return shuffled;
+  };
+
+  const streamAssistantResponse = async (prompt: string) => {
+    const providerApiKey = config.apiKeys[config.activeProvider];
+
+    if (!providerApiKey) {
+      throw new Error(`No ${config.activeProvider} API key configured. Run /config to set one up.`);
+    }
+
+    const model =
+      config.activeProvider === "gemini"
+        ? createGoogleGenerativeAI({ apiKey: providerApiKey })(config.activeModel)
+        : createOpenAI({
+            apiKey: providerApiKey,
+            baseURL: process.env.BASE_URL,
+          })(config.activeModel);
+
+    const { textStream } = await streamText({
+      model,
+      system: SYSTEM_PROMPT,
+      prompt,
+    });
+
+    let fullText = "";
+    for await (const textPart of textStream) {
+      fullText += textPart;
+      const visibleText = fullText.split("|||VOCAB|||")[0] ?? "";
+      setOutput(visibleText);
+    }
+
+    try {
+      const vocabMatch = fullText.match(/\|\|\|VOCAB\|\|\|\s*([\s\S]*?)\s*\|\|\|END_VOCAB\|\|\|/);
+      if (vocabMatch?.[1]) {
+        const parsed = JSON.parse(vocabMatch[1]) as { word: string; translation: string }[];
+        if (Array.isArray(parsed)) {
+          await addVocab(parsed);
+        }
+      }
+    } catch {
+      // Ignore malformed vocab blocks from model responses
+    }
+
+    const refreshedVocab = await getVocab();
+    setVocabList(refreshedVocab);
+  };
+
+  const handleQuizSubmit = async (item: { value: string }) => {
+    if (!quiz.active || !quiz.target) return;
+
+    const target = quiz.target;
+    const guess = item.value;
+    const isCorrect = guess === target.translation;
+
+    setQuiz({ active: false });
+    setOutput("");
+    setIsStreaming(true);
+
+    try {
+      await updateMastery(target.word, isCorrect);
+      const refreshedVocab = await getVocab();
+      setVocabList(refreshedVocab);
+
+      const hiddenPrompt = `The user was quizzed on the Spanish technical term "${target.word}". They guessed the translation was "${guess}". This was ${isCorrect ? "CORRECT" : "INCORRECT"}. Provide a brief, cynical response in Spanish followed by the English translation. If they were wrong, mock them. If they were right, act begrudgingly impressed.`;
+
+      await streamAssistantResponse(hiddenPrompt);
+    } catch (error: any) {
+      setOutput(`Error: ${error.message}`);
+    } finally {
+      setIsStreaming(false);
+    }
+  };
+
   const handleSubmit = async (query: string) => {
-    if (!query.trim()) return;
+    const trimmedQuery = query.trim();
+
+    if (trimmedQuery === "/quiz") {
+      if (vocabList.length < 4) {
+        setOutput("You need at least 4 words in your Cheat Sheet to take a quiz. Run /roast or /meaning first.");
+        return;
+      }
+
+      const sortedByMastery = [...vocabList].sort((a, b) => (a.mastery ?? 0) - (b.mastery ?? 0));
+      const lowMasteryPool = sortedByMastery.slice(0, Math.max(1, Math.ceil(sortedByMastery.length / 2)));
+      const target = lowMasteryPool[Math.floor(Math.random() * lowMasteryPool.length)];
+      if (!target) {
+        setOutput("Could not build quiz right now. Try again.");
+        return;
+      }
+      const distractors = shuffle(vocabList.filter((entry) => entry.word !== target.word)).slice(0, 3);
+      const options = shuffle([target.translation, ...distractors.map((entry) => entry.translation)]).map(
+        (translation) => ({ label: translation, value: translation }),
+      );
+
+      setQuiz({ active: true, target, options });
+      setInput("");
+      return;
+    }
+
+    if (!trimmedQuery) return;
     if (query === "/exit") process.exit(0);
 
     if (query === "/config") {
       deleteConfig();
       setOutput("🔑 Config cleared. Configure a new one below.");
       onConfigReset();
-      return;
-    }
-
-    const providerApiKey = config.apiKeys[config.activeProvider];
-
-    if (!providerApiKey) {
-      setOutput(`Error: No ${config.activeProvider} API key configured. Run /config to set one up.`);
       return;
     }
 
@@ -104,41 +209,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         userContent = query;
       }
 
-      const model =
-        config.activeProvider === "gemini"
-          ? createGoogleGenerativeAI({ apiKey: config.apiKeys.gemini })(config.activeModel)
-          : createOpenAI({
-              apiKey: config.apiKeys.openai,
-              baseURL: process.env.BASE_URL,
-            })(config.activeModel);
-
-      const { textStream } = await streamText({
-        model,
-        system: SYSTEM_PROMPT,
-        prompt: userContent,
-      });
-
-      let fullText = "";
-      for await (const textPart of textStream) {
-        fullText += textPart;
-        const visibleText = fullText.split("|||VOCAB|||")[0] ?? "";
-        setOutput(visibleText);
-      }
-
-      try {
-        const vocabMatch = fullText.match(/\|\|\|VOCAB\|\|\|\s*([\s\S]*?)\s*\|\|\|END_VOCAB\|\|\|/);
-        if (vocabMatch?.[1]) {
-          const parsed = JSON.parse(vocabMatch[1]) as { word: string; translation: string }[];
-          if (Array.isArray(parsed)) {
-            await addVocab(parsed);
-          }
-        }
-      } catch {
-        // Ignore malformed vocab blocks from model responses
-      }
-
-      const refreshedVocab = await getVocab();
-      setVocabList(refreshedVocab);
+      await streamAssistantResponse(userContent);
     } catch (error: any) {
       setOutput(`Error: ${error.message}`);
     } finally {
@@ -170,21 +241,32 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           <Spacer />
         </Box>
 
-        <Box marginTop={1}>
-          <Box marginRight={1}>
-            <Text color="red">❯</Text>
+        {quiz.active && quiz.target && quiz.options && (
+          <Box flexDirection="column" marginY={1} borderStyle="round" borderColor="magenta" paddingX={1}>
+            <Text bold color="magenta">
+              🧠 Pop Quiz: What does "{quiz.target.word}" mean?
+            </Text>
+            <SelectInput items={quiz.options} onSelect={handleQuizSubmit} />
           </Box>
-          {isStreaming ? (
-            <Text color="red">El senior está escribiendo...</Text>
-          ) : (
-            <TextInput
-              value={input}
-              onChange={setInput}
-              onSubmit={handleSubmit}
-              placeholder="/lore, /roast, /meaning <word>, /config, /exit"
-            />
-          )}
-        </Box>
+        )}
+
+        {quiz.active ? null : (
+          <Box marginTop={1}>
+            <Box marginRight={1}>
+              <Text color="red">❯</Text>
+            </Box>
+            {isStreaming ? (
+              <Text color="red">El senior está escribiendo...</Text>
+            ) : (
+              <TextInput
+                value={input}
+                onChange={setInput}
+                onSubmit={handleSubmit}
+                placeholder="/lore, /roast, /meaning <word>, /quiz, /config, /exit"
+              />
+            )}
+          </Box>
+        )}
       </Box>
 
       <Box width={35} flexDirection="column" borderStyle="single" borderColor="cyan" padding={1}>

@@ -6,6 +6,7 @@ export type VocabEntry = {
   translation: string;
   count: number;
   lastSeen: string;
+  mastery?: number;
 };
 
 const VOCAB_PATH = path.join(os.homedir(), ".sudo-habla-vocab.json");
@@ -53,6 +54,30 @@ export const addVocab = async (
       count: 1,
       lastSeen: new Date().toISOString(),
     });
+  }
+
+  await Bun.write(VOCAB_PATH, JSON.stringify(entries, null, 2));
+};
+
+export const updateMastery = async (word: string, isCorrect: boolean): Promise<void> => {
+  let entries: VocabEntry[] = [];
+
+  try {
+    const text = await Bun.file(VOCAB_PATH).text();
+    if (text.trim()) {
+      entries = JSON.parse(text) as VocabEntry[];
+    }
+  } catch {
+    return;
+  }
+
+  const target = entries.find((entry) => entry.word === word);
+  if (!target) return;
+
+  if (isCorrect) {
+    target.mastery = (target.mastery ?? 0) + 1;
+  } else {
+    target.mastery = 0;
   }
 
   await Bun.write(VOCAB_PATH, JSON.stringify(entries, null, 2));
