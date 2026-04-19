@@ -160,7 +160,8 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
 
   const isTypingCommand = input.startsWith('/') && !input.includes(' ');
   const filteredCommands = COMMANDS.filter(c => c.value.startsWith(input));
-  const showMenu = isTypingCommand && filteredCommands.length > 0;
+  const isExactCommandMatch = COMMANDS.some(c => c.value === input);
+  const showMenu = isTypingCommand && filteredCommands.length > 0 && !isExactCommandMatch;
 
   const handleCommandSelect = (item: { label: string; value: string }) => {
     setInput(item.value);
