@@ -59,6 +59,8 @@ interface ReplProps {
   onConfigReset: () => void;
 }
 
+type Message = { role: 'user' | 'assistant'; text: string };
+
 const COMMANDS = [
   { label: '/roast - Roast your git diff', value: '/roast' },
   { label: '/lore - Get a random cynical dev story', value: '/lore' },
@@ -77,7 +79,8 @@ const getMasteryColor = (mastery = 0) => {
 export const Repl = ({ config, onConfigReset }: ReplProps) => {
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [output, setOutput] = useState("");
+  const [history, setHistory] = useState<Message[]>([]);
+  const [currentStream, setCurrentStream] = useState("");
   const [vocabList, setVocabList] = useState<VocabEntry[]>([]);
   const [quiz, setQuiz] = useState<{
     active: boolean;
@@ -139,8 +142,10 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     for await (const textPart of textStream) {
       fullText += textPart;
       const visibleText = fullText.split("|||VOCAB|||")[0] ?? "";
-      setOutput(visibleText);
+      setCurrentStream(visibleText);
     }
+
+    const visibleText = fullText.split("|||VOCAB|||")[0] ?? "";
 
     try {
       const vocabMatch = fullText.match(/\|\|\|VOCAB\|\|\|\s*([\s\S]*?)\s*\|\|\|END_VOCAB\|\|\|/);
@@ -154,6 +159,8 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
       // Ignore malformed vocab blocks from model responses
     }
 
+    setHistory(prev => [...prev, { role: 'assistant', text: visibleText }]);
+    setCurrentStream("");
     const refreshedVocab = await getVocab();
     setVocabList(refreshedVocab);
   };
@@ -175,7 +182,6 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
     const isCorrect = guess === target.translation;
 
     setQuiz({ active: false });
-    setOutput("");
     setIsStreaming(true);
 
     try {
@@ -187,7 +193,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
 
       await streamAssistantResponse(hiddenPrompt);
     } catch (error: any) {
-      setOutput(`Error: ${error.message}`);
+      setHistory(prev => [...prev, { role: 'assistant', text: `Error: ${error.message}` }]);
     } finally {
       setIsStreaming(false);
     }
@@ -196,7 +202,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
   const handleSubmit = async (query: string) => {
     if (query.trim() === "/quiz") {
       if (vocabList.length < 4) {
-        setOutput("You need at least 4 words in your Cheat Sheet to take a quiz. Run /roast or /meaning first.");
+        setHistory(prev => [...prev, { role: 'user', text: '/quiz' }, { role: 'assistant', text: "You need at least 4 words in your Cheat Sheet to take a quiz. Run /roast or /meaning first." }]);
         return; // Stop execution
       }
 
@@ -229,13 +235,14 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
 
     if (query === "/config") {
       deleteConfig();
-      setOutput("🔑 Config cleared. Configure a new one below.");
+      setHistory(prev => [...prev, { role: 'user', text: '/config' }, { role: 'assistant', text: "🔑 Config cleared. Configure a new one below." }]);
       onConfigReset();
       return;
     }
 
     setInput("");
-    setOutput("");
+    setCurrentStream("");
+    setHistory(prev => [...prev, { role: 'user', text: query }]);
     setIsStreaming(true);
 
     try {
@@ -250,7 +257,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
 
       await streamAssistantResponse(userContent);
     } catch (error: any) {
-      setOutput(`Error: ${error.message}`);
+      setHistory(prev => [...prev, { role: 'assistant', text: `Error: ${error.message}` }]);
     } finally {
       setIsStreaming(false);
     }
@@ -275,23 +282,41 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           </Text>
         </Box>
 
-        <Box flexDirection="column" flexGrow={1} overflow="hidden">
-          {output && (
-            <Box
-              marginBottom={1}
-              borderStyle="round"
-              borderColor="red"
-              paddingX={1}
-              flexDirection="column"
-            >
-              <Markdown>{output}</Markdown>
+        <Box
+          flexGrow={1}
+          flexDirection="column"
+          justifyContent="flex-end"
+          paddingBottom={1}
+          overflow="hidden"
+        >
+          {history.map((msg, i) => (
+            <Box key={i} flexDirection="column" marginBottom={1}>
+              {msg.role === "user" ? (
+                <Text color="cyan" bold>
+                  ❯ {msg.text}
+                </Text>
+              ) : (
+                <Box borderStyle="round" borderColor="red" paddingX={1}>
+                  <Markdown>{msg.text}</Markdown>
+                </Box>
+              )}
+            </Box>
+          ))}
+          {currentStream && (
+            <Box borderStyle="round" borderColor="#A855F7" paddingX={1}>
+              <Markdown>{currentStream}</Markdown>
             </Box>
           )}
-          <Spacer />
         </Box>
 
         {showMenu && !quiz.active && (
-          <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginBottom={1}>
+          <Box
+            flexDirection="column"
+            borderStyle="round"
+            borderColor="cyan"
+            paddingX={1}
+            marginBottom={1}
+          >
             <SelectInput
               items={filteredCommands}
               onSelect={handleCommandSelect}
@@ -300,15 +325,20 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         )}
 
         {quiz.active && quiz.target && quiz.options ? (
-          <Box flexDirection="column" marginY={1} borderStyle="round" borderColor="magenta" paddingX={1}>
+          <Box
+            flexDirection="column"
+            marginY={1}
+            borderStyle="round"
+            borderColor="magenta"
+            paddingX={1}
+          >
             <Text bold color="magenta">
               🧠 Pop Quiz: What does "{quiz.target.word}" mean?
             </Text>
             <SelectInput items={quiz.options} onSelect={handleQuizSubmit} />
           </Box>
         ) : (
-          <Box flexDirection="row">
-            <Text color="greenBright">❯ </Text>
+          <Box width="100%" backgroundColor="#3300667f" paddingX={1}>
             <TextInput
               value={input}
               onChange={setInput}
@@ -333,7 +363,9 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
             <Text dimColor>{v.translation}</Text>
           </Box>
         ))}
-        {vocabList.length === 0 && <Text dimColor>No vocab yet. Get roasted.</Text>}
+        {vocabList.length === 0 && (
+          <Text dimColor>No vocab yet. Get roasted.</Text>
+        )}
       </Box>
     </Box>
   );
