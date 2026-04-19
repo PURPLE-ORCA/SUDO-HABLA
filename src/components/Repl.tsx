@@ -59,6 +59,15 @@ interface ReplProps {
   onConfigReset: () => void;
 }
 
+const COMMANDS = [
+  { label: '/roast - Roast your git diff', value: '/roast' },
+  { label: '/lore - Get a random cynical dev story', value: '/lore' },
+  { label: '/meaning <word> - Translate and explain a term', value: '/meaning ' },
+  { label: '/quiz - Test your vocab mastery', value: '/quiz' },
+  { label: '/config - Change provider/model', value: '/config' },
+  { label: '/exit - Quit the application', value: '/exit' }
+];
+
 const getMasteryColor = (mastery = 0) => {
   if (mastery === 0) return 'red';
   if (mastery <= 2) return 'yellow';
@@ -147,6 +156,14 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
 
     const refreshedVocab = await getVocab();
     setVocabList(refreshedVocab);
+  };
+
+  const isTypingCommand = input.startsWith('/') && !input.includes(' ');
+  const filteredCommands = COMMANDS.filter(c => c.value.startsWith(input));
+  const showMenu = isTypingCommand && filteredCommands.length > 0;
+
+  const handleCommandSelect = (item: { label: string; value: string }) => {
+    setInput(item.value);
   };
 
   const handleQuizSubmit = async (item: { value: string }) => {
@@ -272,6 +289,15 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           <Spacer />
         </Box>
 
+        {showMenu && !quiz.active && (
+          <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginBottom={1}>
+            <SelectInput
+              items={filteredCommands}
+              onSelect={handleCommandSelect}
+            />
+          </Box>
+        )}
+
         {quiz.active && quiz.target && quiz.options ? (
           <Box flexDirection="column" marginY={1} borderStyle="round" borderColor="magenta" paddingX={1}>
             <Text bold color="magenta">
@@ -286,7 +312,8 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
               value={input}
               onChange={setInput}
               onSubmit={handleSubmit}
-              placeholder="/lore, /roast, /meaning <word>, /quiz, /config, /exit"
+              focus={!showMenu}
+              placeholder="Type / for commands or ask a question..."
             />
           </Box>
         )}
