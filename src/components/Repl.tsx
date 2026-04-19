@@ -94,6 +94,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
   const [history, setHistory] = useState<Message[]>([]);
   const [currentStream, setCurrentStream] = useState("");
   const [vocabList, setVocabList] = useState<VocabEntry[]>([]);
+  const [showSidebar, setShowSidebar] = useState(true);
   const [quiz, setQuiz] = useState<{
     active: boolean;
     target?: VocabEntry;
@@ -184,12 +185,18 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
   const showMenu = isTypingCommand && filteredCommands.length > 0 && !isExactCommandMatch;
 
   useInput((char, key) => {
+    // 1. Toggle Sidebar (Always active)
+    if (key.ctrl && char === 'b') {
+      setShowSidebar(prev => !prev);
+    }
+
+    // 2. Tab Autocomplete (Only active if menu is showing)
     if (key.tab && showMenu && filteredCommands.length > 0) {
       const match = filteredCommands[0]!.value;
       setInput(match.endsWith(' ') ? match : match + ' ');
       setInputKey((prev) => prev + 1);
     }
-  }, { isActive: showMenu });
+  }, { isActive: true }); // CRITICAL: This must be true so Ctrl+B always works
 
   const handleQuizSubmit = async (item: { value: string }) => {
     if (!quiz.active || !quiz.target) return;
@@ -337,7 +344,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         flexDirection="column"
         paddingRight={1}
         borderStyle="single"
-        borderRight={true}
+        borderRight={showSidebar}
         borderTop={false}
         borderBottom={false}
         borderLeft={false}
@@ -424,23 +431,25 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         )}
       </Box>
 
-      <Box width={35} flexDirection="column" paddingLeft={1}>
-        <Text bold color="#A855F7" underline>
-          Cheat Sheet
-        </Text>
-        <Spacer />
-        {vocabList.slice(0, 10).map((v, i) => (
-          <Box key={i} flexDirection="column" marginBottom={1}>
-            <Text bold color={getMasteryColor(v.mastery)}>
-              {v.word}
-            </Text>
-            <Text dimColor>{v.translation}</Text>
-          </Box>
-        ))}
-        {vocabList.length === 0 && (
-          <Text dimColor>No vocab yet. Get roasted.</Text>
-        )}
-      </Box>
+      {showSidebar && (
+        <Box width={35} flexDirection="column" paddingLeft={1}>
+          <Text bold color="#A855F7" underline>
+            Cheat Sheet
+          </Text>
+          <Spacer />
+          {vocabList.slice(0, 10).map((v, i) => (
+            <Box key={i} flexDirection="column" marginBottom={1}>
+              <Text bold color={getMasteryColor(v.mastery)}>
+                {v.word}
+              </Text>
+              <Text dimColor>{v.translation}</Text>
+            </Box>
+          ))}
+          {vocabList.length === 0 && (
+            <Text dimColor>No vocab yet. Get roasted.</Text>
+          )}
+        </Box>
+      )}
     </Box>
   );
 };
