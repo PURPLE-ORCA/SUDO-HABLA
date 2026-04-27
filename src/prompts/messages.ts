@@ -31,6 +31,8 @@ export const buildFileReadErrorMessage = (error: unknown): string =>
 export const POP_QUIZ_TITLE_PREFIX = '🧠 Pop Quiz: What does "';
 export const POP_QUIZ_TITLE_SUFFIX = '" mean?';
 export const INPUT_PLACEHOLDER_INTERVIEW = "Type your answer in Spanish...";
+export const INPUT_PLACEHOLDER_COMMIT =
+  "Type 'y' to commit, or 'n' to cancel...";
 export const INPUT_PLACEHOLDER_DEFAULT =
   "Type / for commands or ask a question...";
 export const CHEAT_SHEET_TITLE = "Cheat Sheet";

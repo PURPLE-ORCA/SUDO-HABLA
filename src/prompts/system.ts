@@ -28,4 +28,11 @@ export const ROAST_CONSTRAINTS = `Here is my git diff. Roast this code and my te
 
 Then append a new section titled '💡 El Arreglo (The Fix)'. In one concise, bilingual sentence, cynically correct their technical mistake with the specific pattern or fix they should use. Spanish first, then English translation immediately after.`;
 
+export const COMMIT_PROMPT_INJECT = `Act as a cynical, elitist Principal Engineer. The user is providing a git diff.
+1. Generate a strictly formatted Conventional Commit message entirely in Spanish.
+2. You MUST wrap the actual commit message inside these exact delimiters: |||COMMIT||| <message> |||END_COMMIT|||
+3. Add a brutal, sarcastic comment about the code quality below it.
+4. Provide the English translation of the commit message in parentheses.
+Remember the |||VOCAB||| JSON block at the end. NEVER use Markdown tables.`;
+
 export const buildRoastPrompt = (gitData: string): string => `${ROAST_CONSTRAINTS}\n\n${gitData}`;

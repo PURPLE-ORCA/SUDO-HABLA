@@ -5,11 +5,13 @@ export const CMD_REVISAR_PREFIX = "/revisar ";
 export const CMD_ENTREVISTA = "/entrevista";
 export const CMD_MEANING_PREFIX = "/meaning ";
 export const CMD_QUIZ = "/quiz";
+export const CMD_COMMIT = "/commit";
 export const CMD_CONFIG = "/config";
 export const CMD_EXIT = "/exit";
 
 export const REPL_COMMANDS = [
   { label: "/roast - Roast your git diff", value: CMD_ROAST },
+  { label: "/commit - Generate a Spanish commit message from your diff", value: CMD_COMMIT },
   { label: "/lore - Get a random cynical dev story", value: CMD_LORE },
   { label: "/daily <update> - Give your standup update", value: CMD_DAILY_PREFIX },
   { label: "/revisar <filepath> - Roast a specific file", value: CMD_REVISAR_PREFIX },

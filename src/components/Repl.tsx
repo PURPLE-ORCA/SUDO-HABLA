@@ -7,6 +7,7 @@ import packageJson from "../../package.json";
 import { CommandMenu } from "./repl/CommandMenu";
 import { HistoryPane } from "./repl/HistoryPane";
 import { InputBar } from "./repl/InputBar";
+import { CommitConfirmPanel } from "./repl/CommitConfirmPanel";
 import { QuizPanel } from "./repl/QuizPanel";
 import { ReplHeader } from "./repl/ReplHeader";
 import { VocabSidebar } from "./repl/VocabSidebar";
@@ -41,7 +42,13 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           filteredCommands={repl.filteredCommands}
         />
         <QuizPanel quiz={repl.quiz} onSelect={repl.handleQuizSubmit} />
-        {!repl.quiz.active && (
+        {repl.pendingCommit && (
+          <CommitConfirmPanel
+            message={repl.pendingCommit}
+            onSelect={repl.handleCommitConfirm}
+          />
+        )}
+        {!repl.quiz.active && !repl.pendingCommit && (
           <InputBar
             input={repl.input}
             inputKey={repl.inputKey}
