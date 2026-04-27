@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { useStdout } from "ink";
 import { deleteConfig, type Config } from "../lib/config";
 import { getLatestGitDiff } from "../lib/git";
+import { summarizeFileBlame } from "../lib/replBlame";
 import { getVocab, type VocabEntry, updateMastery } from "../lib/vocab";
 import { buildQuizFromVocab } from "../lib/replQuiz";
 import { streamAssistantResponse } from "../lib/replAi";
 import { readFileForReview } from "../lib/replFiles";
 import {
+  CMD_BLAME_PREFIX,
   CMD_COMMIT,
   CMD_CONFIG,
   CMD_DAILY_PREFIX,
@@ -20,6 +22,7 @@ import {
   REPL_COMMANDS,
 } from "../constants/repl";
 import {
+  BLAME_PROMPT_INJECT,
   buildRoastPrompt,
   COMMIT_PROMPT_INJECT,
   DAILY_PROMPT_INJECT,
@@ -30,10 +33,12 @@ import {
   buildQuizFeedbackPrompt,
 } from "../prompts/repl";
 import {
+  buildBlameUsageMessage,
   buildDailyUsageMessage,
   buildFileReadErrorMessage,
   buildGenericErrorMessage,
   buildInterviewHeaderMessage,
+  buildMissingBlameMessage,
   buildMissingFileMessage,
   buildQuizRequiresWordsMessage,
   buildRevisarUsageMessage,
@@ -302,6 +307,50 @@ export const useReplController = ({
         return;
       }
       aiPrompt = `${DAILY_PROMPT_INJECT}\n\nUser Update: "${updateText}"`;
+    } else if (!interviewQuestion && query.startsWith(CMD_BLAME_PREFIX)) {
+      const filePath = query.slice(CMD_BLAME_PREFIX.length).trim();
+
+      if (!filePath) {
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text: buildBlameUsageMessage(CMD_BLAME_PREFIX.trim()),
+          },
+        ]);
+        return;
+      }
+
+      try {
+        const blameSummary = await summarizeFileBlame(filePath);
+
+        if (!blameSummary) {
+          const file = Bun.file(filePath);
+          const exists = await file.exists();
+          setHistory((prev) => [
+            ...prev,
+            {
+              role: "assistant",
+              text: exists
+                ? buildMissingBlameMessage(filePath)
+                : buildMissingFileMessage(filePath),
+            },
+          ]);
+          return;
+        }
+
+        const snippetLines = blameSummary.snippets
+          .map((snippet) => `- line ${snippet.lineNumber}: ${snippet.content}`)
+          .join("\n");
+
+        aiPrompt = `${BLAME_PROMPT_INJECT}\n\nFile: ${blameSummary.filePath}\nCulprit: ${blameSummary.culprit}\nOwned non-empty lines: ${blameSummary.lineCount}\nBlamed snippets:\n${snippetLines}`;
+      } catch (error) {
+        setHistory((prev) => [
+          ...prev,
+          { role: "assistant", text: buildFileReadErrorMessage(error) },
+        ]);
+        return;
+      }
     } else if (!interviewQuestion && query.startsWith(CMD_REVISAR_PREFIX)) {
       const filePath = query.slice(CMD_REVISAR_PREFIX.length).trim();
 
