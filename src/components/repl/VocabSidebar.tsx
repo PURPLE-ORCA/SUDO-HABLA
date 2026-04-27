@@ -19,7 +19,7 @@ export const VocabSidebar = ({ showSidebar, vocabList }: VocabSidebarProps) => {
   if (!showSidebar) return null;
 
   return (
-    <Box width={35} flexDirection="column" paddingLeft={1}>
+    <Box width={35} flexShrink={0} flexDirection="column" paddingLeft={1} overflow="hidden">
       <Text bold color={CLI_BRAND_COLOR} underline>
         {CHEAT_SHEET_TITLE}
       </Text>

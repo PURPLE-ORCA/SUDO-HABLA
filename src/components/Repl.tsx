@@ -7,6 +7,8 @@ import packageJson from "../../package.json";
 import { CommandMenu } from "./repl/CommandMenu";
 import { HistoryPane } from "./repl/HistoryPane";
 import { InputBar } from "./repl/InputBar";
+import { CommitConfirmPanel } from "./repl/CommitConfirmPanel";
+import { PrActionPanel } from "./repl/PrActionPanel";
 import { QuizPanel } from "./repl/QuizPanel";
 import { ReplHeader } from "./repl/ReplHeader";
 import { VocabSidebar } from "./repl/VocabSidebar";
@@ -22,9 +24,15 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
   useInput(repl.handleGlobalInput, { isActive: true });
 
   return (
-    <Box height={repl.dimensions.rows - 1} flexDirection="row" width="100%">
+    <Box
+      height={repl.dimensions.rows - 1}
+      flexDirection="row"
+      width="100%"
+      overflow="hidden"
+    >
       <Box
         flexGrow={1}
+        flexShrink={1}
         flexDirection="column"
         paddingRight={1}
         borderStyle="single"
@@ -33,15 +41,28 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         borderBottom={false}
         borderLeft={false}
         borderColor={CLI_BRAND_COLOR}
+        overflow="hidden"
       >
         <ReplHeader version={packageJson.version} />
-        <HistoryPane history={repl.history} currentStream={repl.currentStream} />
+        <HistoryPane
+          history={repl.history}
+          currentStream={repl.currentStream}
+          isThinking={repl.isThinking}
+          loadingIndicator={repl.loadingIndicator}
+        />
         <CommandMenu
-          showMenu={repl.showMenu && !repl.quiz.active}
+          showMenu={repl.showMenu && !repl.quiz.active && !repl.pendingPr}
           filteredCommands={repl.filteredCommands}
         />
         <QuizPanel quiz={repl.quiz} onSelect={repl.handleQuizSubmit} />
-        {!repl.quiz.active && (
+        {repl.pendingCommit && (
+          <CommitConfirmPanel
+            message={repl.pendingCommit}
+            onSelect={repl.handleCommitConfirm}
+          />
+        )}
+        {repl.pendingPr && <PrActionPanel onSelect={repl.handlePrAction} />}
+        {!repl.quiz.active && !repl.pendingCommit && !repl.pendingPr && (
           <InputBar
             input={repl.input}
             inputKey={repl.inputKey}

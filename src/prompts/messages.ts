@@ -22,8 +22,20 @@ export const buildDailyUsageMessage = (dailyCommand: string): string =>
 export const buildRevisarUsageMessage = (revisarCommand: string): string =>
   `I need a file path to roast, junior. Usage: ${revisarCommand} <src/file.ts>`;
 
+export const buildBlameUsageMessage = (blameCommand: string): string =>
+  `Point at one file, genius. Usage: ${blameCommand} <src/file.ts>`;
+
+export const buildPrNoChangesMessage = (): string =>
+  "No branch or worktree diff against base. Make actual changes before asking for PR copy.";
+
+export const buildPrGitErrorMessage = (error: unknown): string =>
+  `Git failed while reading PR scope. Error: ${error}`;
+
 export const buildMissingFileMessage = (filePath: string): string =>
   `404 Brain Not Found. The file "${filePath}" does not exist in this directory.`;
+
+export const buildMissingBlameMessage = (filePath: string): string =>
+  `Git blame found nothing useful for "${filePath}". Probably untracked, empty, or beneath even git's standards.`;
 
 export const buildFileReadErrorMessage = (error: unknown): string =>
   `I couldn't read the file. Probably a permissions issue, just like your database. Error: ${error}`;
@@ -31,6 +43,8 @@ export const buildFileReadErrorMessage = (error: unknown): string =>
 export const POP_QUIZ_TITLE_PREFIX = '🧠 Pop Quiz: What does "';
 export const POP_QUIZ_TITLE_SUFFIX = '" mean?';
 export const INPUT_PLACEHOLDER_INTERVIEW = "Type your answer in Spanish...";
+export const INPUT_PLACEHOLDER_COMMIT =
+  "Type 'y' to commit, or 'n' to cancel...";
 export const INPUT_PLACEHOLDER_DEFAULT =
   "Type / for commands or ask a question...";
 export const CHEAT_SHEET_TITLE = "Cheat Sheet";

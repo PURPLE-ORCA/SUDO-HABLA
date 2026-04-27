@@ -32,7 +32,9 @@ export const InputBar = ({
       onSubmit={onSubmit}
       focus={!quizActive}
       placeholder={
-        interviewQuestion ? INPUT_PLACEHOLDER_INTERVIEW : INPUT_PLACEHOLDER_DEFAULT
+        interviewQuestion
+          ? INPUT_PLACEHOLDER_INTERVIEW
+          : INPUT_PLACEHOLDER_DEFAULT
       }
     />
   </Box>
