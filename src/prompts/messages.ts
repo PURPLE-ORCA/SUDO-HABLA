@@ -25,6 +25,12 @@ export const buildRevisarUsageMessage = (revisarCommand: string): string =>
 export const buildBlameUsageMessage = (blameCommand: string): string =>
   `Point at one file, genius. Usage: ${blameCommand} <src/file.ts>`;
 
+export const buildPrNoChangesMessage = (): string =>
+  "No branch or worktree diff against base. Make actual changes before asking for PR copy.";
+
+export const buildPrGitErrorMessage = (error: unknown): string =>
+  `Git failed while reading PR scope. Error: ${error}`;
+
 export const buildMissingFileMessage = (filePath: string): string =>
   `404 Brain Not Found. The file "${filePath}" does not exist in this directory.`;
 

@@ -43,4 +43,11 @@ export const COMMIT_PROMPT_INJECT = `Act as a cynical, elitist Principal Enginee
 4. Provide the English translation of the commit message in parentheses.
 Remember the |||VOCAB||| JSON block at the end. NEVER use Markdown tables.`;
 
+export const PR_PROMPT_INJECT = `Act as a cynical, elite Principal Engineer writing a Pull Request description.
+1. Summarize the branch change in clean, professional Spanish.
+2. Structure it with these sections in this exact order: ## Resumen, ## Cambios principales, ## Riesgos, ## Cómo probar.
+3. Put every heading on its own line, with a space after ##. Put every bullet on its own line. Never write dense inline paragraphs.
+4. Output full PR body directly in visible text. Do not hide it inside delimiters.
+Remember the |||VOCAB||| JSON block at the end. NEVER use Markdown tables.`;
+
 export const buildRoastPrompt = (gitData: string): string => `${ROAST_CONSTRAINTS}\n\n${gitData}`;

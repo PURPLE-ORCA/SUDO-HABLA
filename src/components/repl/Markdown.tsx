@@ -1,51 +1,61 @@
-import React, { useMemo } from "react";
+import React from "react";
 import { Text } from "ink";
-import { marked } from "marked";
-// @ts-ignore - marked-terminal lacks TypeScript definitions
-import { markedTerminal } from "marked-terminal";
-import chalk from "chalk";
 
-let markedConfigured = false;
-
-if (!markedConfigured) {
-  marked.use(
-    markedTerminal({
-      code: chalk.yellow,
-      blockquote: chalk.gray.italic,
-      heading: chalk.green.bold,
-      firstHeading: chalk.magenta.underline.bold,
-      strong: chalk.bold,
-      em: chalk.italic,
-      codespan: chalk.yellow,
-      del: chalk.dim.gray.strikethrough,
-      link: chalk.blue,
-      href: chalk.blue.underline,
-      width: 80,
-      reflowText: false,
-      emoji: true,
-      tab: 2,
-    }),
-  );
-
-  markedConfigured = true;
-}
+const stripInlineMarkdown = (line: string) =>
+  line
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .trimEnd();
 
 export const Markdown = ({ children }: { children: string }) => {
-  const rendered = useMemo(() => {
-    if (!children) return "";
-    try {
-      return marked.parse(children, { async: false }) as string;
-    } catch {
-      return children;
-    }
-  }, [children]);
+  const lines = children.split("\n");
+  let inCodeBlock = false;
 
-  const lines = rendered.split("\n");
   return (
     <>
-      {lines.map((line, i) => (
-        <Text key={`line-${i}-${line.length}`}>{line || " "}</Text>
-      ))}
+      {lines.map((line, i) => {
+        const trimmed = line.trim();
+
+        if (trimmed.startsWith("```")) {
+          inCodeBlock = !inCodeBlock;
+          return null;
+        }
+
+        if (inCodeBlock) {
+          return (
+            <Text key={`line-${i}`} color="yellow" wrap="wrap">
+              {line || " "}
+            </Text>
+          );
+        }
+
+        if (trimmed.startsWith("## ")) {
+          return (
+            <Text key={`line-${i}`} bold color="green" wrap="wrap">
+              {trimmed.slice(3)}
+            </Text>
+          );
+        }
+
+        if (trimmed.startsWith("# ")) {
+          return (
+            <Text key={`line-${i}`} bold color="magenta" wrap="wrap">
+              {trimmed.slice(2)}
+            </Text>
+          );
+        }
+
+        if (!trimmed) {
+          return <Text key={`line-${i}`}> </Text>;
+        }
+
+        return (
+          <Text key={`line-${i}`} wrap="wrap">
+            {stripInlineMarkdown(line)}
+          </Text>
+        );
+      })}
     </>
   );
 };

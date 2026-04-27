@@ -7,6 +7,7 @@ export const CMD_ENTREVISTA = "/entrevista";
 export const CMD_MEANING_PREFIX = "/meaning ";
 export const CMD_QUIZ = "/quiz";
 export const CMD_COMMIT = "/commit";
+export const CMD_PR = "/pr";
 export const CMD_CONFIG = "/config";
 export const CMD_EXIT = "/exit";
 
@@ -20,6 +21,7 @@ export const REPL_COMMANDS = [
   { label: "/entrevista - Start a technical interview", value: CMD_ENTREVISTA },
   { label: "/meaning <word> - Translate and explain a term", value: CMD_MEANING_PREFIX },
   { label: "/quiz - Test your vocab mastery", value: CMD_QUIZ },
+  { label: "/pr - Generate a PR description from your branch", value: CMD_PR },
   { label: "/config - Change provider/model", value: CMD_CONFIG },
   { label: "/exit - Quit the application", value: CMD_EXIT },
 ];

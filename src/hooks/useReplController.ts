@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useStdout } from "ink";
 import { deleteConfig, type Config } from "../lib/config";
-import { getLatestGitDiff } from "../lib/git";
+import { getLatestGitDiff, getPullRequestContext } from "../lib/git";
 import { summarizeFileBlame } from "../lib/replBlame";
 import { getVocab, type VocabEntry, updateMastery } from "../lib/vocab";
 import { buildQuizFromVocab } from "../lib/replQuiz";
@@ -16,6 +16,7 @@ import {
   CMD_EXIT,
   CMD_MEANING_PREFIX,
   CMD_QUIZ,
+  CMD_PR,
   CMD_REVISAR_PREFIX,
   CMD_ROAST,
   INTERVIEW_QUESTIONS,
@@ -26,6 +27,7 @@ import {
   buildRoastPrompt,
   COMMIT_PROMPT_INJECT,
   DAILY_PROMPT_INJECT,
+  PR_PROMPT_INJECT,
   REVISAR_PROMPT_INJECT,
 } from "../prompts/system";
 import {
@@ -40,6 +42,8 @@ import {
   buildInterviewHeaderMessage,
   buildMissingBlameMessage,
   buildMissingFileMessage,
+  buildPrGitErrorMessage,
+  buildPrNoChangesMessage,
   buildQuizRequiresWordsMessage,
   buildRevisarUsageMessage,
   CONFIG_CLEARED_MESSAGE,
@@ -63,6 +67,7 @@ export const useReplController = ({
   const [quiz, setQuiz] = useState<QuizState>({ active: false });
   const [interviewQuestion, setInterviewQuestion] = useState<string | null>(null);
   const [pendingCommit, setPendingCommit] = useState<string | null>(null);
+  const [pendingPr, setPendingPr] = useState<string | null>(null);
 
   const { stdout } = useStdout();
   const [dimensions, setDimensions] = useState({
@@ -102,6 +107,9 @@ export const useReplController = ({
     ]);
   };
 
+  const stripHiddenBlock = (text: string, label: string) =>
+    text.replace(new RegExp(`\\|\\|\\|${label}\\|\\|\\|[\\s\\S]*?\\|\\|\\|END_${label}\\|\\|\\|`, "g"), "").trim();
+
   const runAssistantPrompt = async (prompt: string) => {
     let visibleText = await streamAssistantResponse({
       config,
@@ -110,16 +118,16 @@ export const useReplController = ({
     });
 
     const commitMatch = visibleText.match(/\|\|\|COMMIT\|\|\|([\s\S]*?)\|\|\|END_COMMIT\|\|\|/);
-    if (commitMatch && commitMatch[1]) {
+    if (commitMatch?.[1]) {
       setPendingCommit(commitMatch[1].trim());
-      visibleText = visibleText.replace(/\|\|\|COMMIT\|\|\|[\s\S]*?\|\|\|END_COMMIT\|\|\|/g, '').trim();
-      // Remove the English translation line that usually follows the commit message
+      visibleText = stripHiddenBlock(visibleText, "COMMIT");
       visibleText = visibleText.replace(/\(feat:.*\)/g, '').trim();
     }
 
     setHistory((prev) => [...prev, { role: "assistant", text: visibleText }]);
     setCurrentStream("");
     setVocabList(await getVocab());
+    return visibleText;
   };
 
   const handleGlobalInput = (char: string, key: { ctrl?: boolean; tab?: boolean }) => {
@@ -197,6 +205,57 @@ export const useReplController = ({
     setPendingCommit(null);
   };
 
+  const handlePrAction = async (item: { value: string }) => {
+    if (!pendingPr) return;
+
+    const prBody = pendingPr.trim();
+    setPendingPr(null);
+
+    if (item.value === "copy") {
+      try {
+        const proc = Bun.spawnSync({
+          cmd: ["/bin/sh", "-c", "printf '%s' \"$SUDO_HABLA_PR_BODY\" | pbcopy"],
+          env: { ...process.env, SUDO_HABLA_PR_BODY: prBody },
+          stderr: "pipe",
+        });
+        if (proc.exitCode !== 0) {
+          throw new Error(proc.stderr.toString() || "pbcopy failed");
+        }
+        setHistory((prev) => [
+          ...prev,
+          { role: "assistant", text: "PR body copied to clipboard." },
+        ]);
+      } catch (error: any) {
+        setHistory((prev) => [
+          ...prev,
+          { role: "assistant", text: `Clipboard copy failed: ${error?.message ?? error}` },
+        ]);
+      }
+      return;
+    }
+
+    if (item.value === "file") {
+      try {
+        await Bun.write("PR_DESCRIPTION.md", `${prBody}\n`);
+        setHistory((prev) => [
+          ...prev,
+          { role: "assistant", text: "Wrote PR_DESCRIPTION.md in project root." },
+        ]);
+      } catch (error: any) {
+        setHistory((prev) => [
+          ...prev,
+          { role: "assistant", text: `Failed to write PR_DESCRIPTION.md: ${error?.message ?? error}` },
+        ]);
+      }
+      return;
+    }
+
+    setHistory((prev) => [
+      ...prev,
+      { role: "assistant", text: "PR output skipped. Manual selection remains your punishment." },
+    ]);
+  };
+
   const handleSubmit = async (query: string) => {
     if (query.trim() === CMD_QUIZ) {
       if (vocabList.length < 4) {
@@ -239,6 +298,7 @@ export const useReplController = ({
     setHistory((prev) => [...prev, { role: "user", text: query }]);
 
     let aiPrompt = query;
+    const isPrCommand = query.trim() === CMD_PR;
 
     if (query.trim() === CMD_COMMIT) {
       try {
@@ -274,6 +334,28 @@ export const useReplController = ({
             role: "assistant",
             text: `Git failed. Are you even in a repository? Error: ${error}`,
           },
+        ]);
+        return;
+      }
+    }
+
+    if (isPrCommand) {
+      try {
+        const prContext = await getPullRequestContext();
+
+        if (!prContext) {
+          setHistory((prev) => [
+            ...prev,
+            { role: "assistant", text: buildPrNoChangesMessage() },
+          ]);
+          return;
+        }
+
+        aiPrompt = `${PR_PROMPT_INJECT}\n\n${prContext}`;
+      } catch (error) {
+        setHistory((prev) => [
+          ...prev,
+          { role: "assistant", text: buildPrGitErrorMessage(error) },
         ]);
         return;
       }
@@ -393,7 +475,10 @@ export const useReplController = ({
         query === CMD_ROAST
           ? buildRoastPrompt(await getLatestGitDiff())
           : aiPrompt;
-      await runAssistantPrompt(userContent);
+      const visibleText = await runAssistantPrompt(userContent);
+      if (isPrCommand && visibleText.trim()) {
+        setPendingPr(visibleText);
+      }
     } catch (error) {
       appendAssistantError(error);
     } finally {
@@ -413,12 +498,14 @@ export const useReplController = ({
     quiz,
     interviewQuestion,
     pendingCommit,
+    pendingPr,
     filteredCommands,
     showMenu,
     setInput,
     handleGlobalInput,
     handleQuizSubmit,
     handleCommitConfirm,
+    handlePrAction,
     handleSubmit,
   };
 };
