@@ -44,7 +44,12 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         overflow="hidden"
       >
         <ReplHeader version={packageJson.version} />
-        <HistoryPane history={repl.history} currentStream={repl.currentStream} />
+        <HistoryPane
+          history={repl.history}
+          currentStream={repl.currentStream}
+          isThinking={repl.isThinking}
+          loadingIndicator={repl.loadingIndicator}
+        />
         <CommandMenu
           showMenu={repl.showMenu && !repl.quiz.active && !repl.pendingPr}
           filteredCommands={repl.filteredCommands}

@@ -50,6 +50,21 @@ import {
 } from "../prompts/messages";
 import type { Message, QuizState } from "../components/repl/types";
 
+const THINKING_MESSAGES = [
+  "Judging your architecture...",
+  "Translating your spaghetti code...",
+  "Finding someone to blame...",
+  "Waking up the Principal Engineer...",
+  "Questioning your career choices...",
+];
+
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+const MESSAGE_ROTATION_MS = 1500;
+const SPINNER_ROTATION_MS = 100;
+
+const pickRandomThinkingMessage = () =>
+  THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)]!;
+
 export const useReplController = ({
   config,
   onConfigReset,
@@ -68,6 +83,9 @@ export const useReplController = ({
   const [interviewQuestion, setInterviewQuestion] = useState<string | null>(null);
   const [pendingCommit, setPendingCommit] = useState<string | null>(null);
   const [pendingPr, setPendingPr] = useState<string | null>(null);
+  const [isThinking, setIsThinking] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState("");
+  const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
 
   const { stdout } = useStdout();
   const [dimensions, setDimensions] = useState({
@@ -93,11 +111,41 @@ export const useReplController = ({
     loadVocab();
   }, []);
 
+  useEffect(() => {
+    if (!isThinking) return;
+
+    setLoadingMessage(pickRandomThinkingMessage());
+
+    const messageInterval = setInterval(() => {
+      setLoadingMessage(pickRandomThinkingMessage());
+    }, MESSAGE_ROTATION_MS);
+
+    const spinnerInterval = setInterval(() => {
+      setSpinnerFrameIndex((prev) => (prev + 1) % SPINNER_FRAMES.length);
+    }, SPINNER_ROTATION_MS);
+
+    return () => {
+      clearInterval(messageInterval);
+      clearInterval(spinnerInterval);
+    };
+  }, [isThinking]);
+
+  const startThinking = () => {
+    setIsThinking(true);
+  };
+
+  const stopThinking = () => {
+    setIsThinking(false);
+    setLoadingMessage("");
+    setSpinnerFrameIndex(0);
+  };
+
   const isTypingCommand = input.startsWith("/") && !input.includes(" ");
   const filteredCommands = REPL_COMMANDS.filter((c) => c.value.startsWith(input));
   const isExactCommandMatch = REPL_COMMANDS.some((c) => c.value === input);
   const showMenu =
     isTypingCommand && filteredCommands.length > 0 && !isExactCommandMatch;
+  const loadingIndicator = `${SPINNER_FRAMES[spinnerFrameIndex] ?? "⠋"} ${loadingMessage || THINKING_MESSAGES[0]}`;
 
   const appendAssistantError = (error: any) => {
     const message = error?.message;
@@ -111,17 +159,25 @@ export const useReplController = ({
     text.replace(new RegExp(`\\|\\|\\|${label}\\|\\|\\|[\\s\\S]*?\\|\\|\\|END_${label}\\|\\|\\|`, "g"), "").trim();
 
   const runAssistantPrompt = async (prompt: string) => {
+    let hasReceivedFirstChunk = false;
+
     let visibleText = await streamAssistantResponse({
       config,
       prompt,
-      onText: setCurrentStream,
+      onText: (text) => {
+        if (!hasReceivedFirstChunk && text.trim().length > 0) {
+          hasReceivedFirstChunk = true;
+          stopThinking();
+        }
+        setCurrentStream(text);
+      },
     });
 
     const commitMatch = visibleText.match(/\|\|\|COMMIT\|\|\|([\s\S]*?)\|\|\|END_COMMIT\|\|\|/);
     if (commitMatch?.[1]) {
       setPendingCommit(commitMatch[1].trim());
       visibleText = stripHiddenBlock(visibleText, "COMMIT");
-      visibleText = visibleText.replace(/\(feat:.*\)/g, '').trim();
+      visibleText = visibleText.replace(/\(feat:.*\)/g, "").trim();
     }
 
     setHistory((prev) => [...prev, { role: "assistant", text: visibleText }]);
@@ -150,6 +206,7 @@ export const useReplController = ({
     const isCorrect = guess === target.translation;
 
     setQuiz({ active: false });
+    startThinking();
     setIsStreaming(true);
 
     try {
@@ -159,8 +216,10 @@ export const useReplController = ({
       const hiddenPrompt = buildQuizFeedbackPrompt(target.word, guess, isCorrect);
       await runAssistantPrompt(hiddenPrompt);
     } catch (error) {
+      stopThinking();
       appendAssistantError(error);
     } finally {
+      stopThinking();
       setIsStreaming(false);
     }
   };
@@ -168,6 +227,7 @@ export const useReplController = ({
   const handleCommitConfirm = async (item: { value: string }) => {
     if (!pendingCommit) return;
 
+    startThinking();
     const choice = item.value;
 
     if (choice === "yes") {
@@ -187,6 +247,7 @@ export const useReplController = ({
           },
         ]);
       } catch (e: any) {
+        stopThinking();
         setHistory((prev) => [
           ...prev,
           {
@@ -203,6 +264,7 @@ export const useReplController = ({
     }
 
     setPendingCommit(null);
+    stopThinking();
   };
 
   const handlePrAction = async (item: { value: string }) => {
@@ -301,6 +363,7 @@ export const useReplController = ({
     const isPrCommand = query.trim() === CMD_PR;
 
     if (query.trim() === CMD_COMMIT) {
+      startThinking();
       try {
         let proc = Bun.spawnSync(["git", "diff", "--staged"]);
         let diff = proc.stdout.toString().trim();
@@ -311,6 +374,7 @@ export const useReplController = ({
         }
 
         if (!diff) {
+          stopThinking();
           setHistory((prev) => [
             ...prev,
             {
@@ -328,6 +392,7 @@ export const useReplController = ({
 
         aiPrompt = `${COMMIT_PROMPT_INJECT}\n\nGit Diff:\n\`\`\`diff\n${truncatedDiff}\n\`\`\``;
       } catch (error) {
+        stopThinking();
         setHistory((prev) => [
           ...prev,
           {
@@ -340,10 +405,12 @@ export const useReplController = ({
     }
 
     if (isPrCommand) {
+      startThinking();
       try {
         const prContext = await getPullRequestContext();
 
         if (!prContext) {
+          stopThinking();
           setHistory((prev) => [
             ...prev,
             { role: "assistant", text: buildPrNoChangesMessage() },
@@ -353,6 +420,7 @@ export const useReplController = ({
 
         aiPrompt = `${PR_PROMPT_INJECT}\n\n${prContext}`;
       } catch (error) {
+        stopThinking();
         setHistory((prev) => [
           ...prev,
           { role: "assistant", text: buildPrGitErrorMessage(error) },
@@ -390,9 +458,11 @@ export const useReplController = ({
       }
       aiPrompt = `${DAILY_PROMPT_INJECT}\n\nUser Update: "${updateText}"`;
     } else if (!interviewQuestion && query.startsWith(CMD_BLAME_PREFIX)) {
+      startThinking();
       const filePath = query.slice(CMD_BLAME_PREFIX.length).trim();
 
       if (!filePath) {
+        stopThinking();
         setHistory((prev) => [
           ...prev,
           {
@@ -409,6 +479,7 @@ export const useReplController = ({
         if (!blameSummary) {
           const file = Bun.file(filePath);
           const exists = await file.exists();
+          stopThinking();
           setHistory((prev) => [
             ...prev,
             {
@@ -427,6 +498,7 @@ export const useReplController = ({
 
         aiPrompt = `${BLAME_PROMPT_INJECT}\n\nFile: ${blameSummary.filePath}\nCulprit: ${blameSummary.culprit}\nOwned non-empty lines: ${blameSummary.lineCount}\nBlamed snippets:\n${snippetLines}`;
       } catch (error) {
+        stopThinking();
         setHistory((prev) => [
           ...prev,
           { role: "assistant", text: buildFileReadErrorMessage(error) },
@@ -434,9 +506,11 @@ export const useReplController = ({
         return;
       }
     } else if (!interviewQuestion && query.startsWith(CMD_REVISAR_PREFIX)) {
+      startThinking();
       const filePath = query.slice(CMD_REVISAR_PREFIX.length).trim();
 
       if (!filePath) {
+        stopThinking();
         setHistory((prev) => [
           ...prev,
           {
@@ -451,6 +525,7 @@ export const useReplController = ({
         const fileResult = await readFileForReview(filePath);
 
         if (!fileResult.exists) {
+          stopThinking();
           setHistory((prev) => [
             ...prev,
             { role: "assistant", text: buildMissingFileMessage(filePath) },
@@ -460,6 +535,7 @@ export const useReplController = ({
 
         aiPrompt = `${REVISAR_PROMPT_INJECT}\n\nFile: ${filePath}\n\n\`\`\`\n${fileResult.content}\n\`\`\``;
       } catch (error) {
+        stopThinking();
         setHistory((prev) => [
           ...prev,
           { role: "assistant", text: buildFileReadErrorMessage(error) },
@@ -468,6 +544,7 @@ export const useReplController = ({
       }
     }
 
+    startThinking();
     setIsStreaming(true);
 
     try {
@@ -480,8 +557,10 @@ export const useReplController = ({
         setPendingPr(visibleText);
       }
     } catch (error) {
+      stopThinking();
       appendAssistantError(error);
     } finally {
+      stopThinking();
       setIsStreaming(false);
     }
   };
@@ -491,8 +570,11 @@ export const useReplController = ({
     input,
     inputKey,
     isStreaming,
+    isThinking,
     history,
     currentStream,
+    loadingMessage,
+    loadingIndicator,
     vocabList,
     showSidebar,
     quiz,

@@ -7,9 +7,16 @@ import type { Message } from "./types";
 interface HistoryPaneProps {
   history: Message[];
   currentStream: string;
+  isThinking: boolean;
+  loadingIndicator: string;
 }
 
-export const HistoryPane = ({ history, currentStream }: HistoryPaneProps) => (
+export const HistoryPane = ({
+  history,
+  currentStream,
+  isThinking,
+  loadingIndicator,
+}: HistoryPaneProps) => (
   <Box
     flexGrow={1}
     flexShrink={1}
@@ -39,6 +46,11 @@ export const HistoryPane = ({ history, currentStream }: HistoryPaneProps) => (
         )}
       </Box>
     ))}
+    {isThinking && (
+      <Box marginBottom={1} flexShrink={0}>
+        <Text color="magenta">{loadingIndicator}</Text>
+      </Box>
+    )}
     {currentStream && (
       <Box
         borderStyle="round"
