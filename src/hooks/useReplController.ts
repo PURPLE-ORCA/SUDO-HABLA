@@ -2,14 +2,17 @@ import { useEffect, useState } from "react";
 import { useStdout } from "ink";
 import { deleteConfig, type Config } from "../lib/config";
 import { getLatestGitDiff, getPullRequestContext } from "../lib/git";
+import { clearHistory, loadHistory, saveHistory } from "../lib/session";
 import { summarizeFileBlame } from "../lib/replBlame";
 import { getVocab, type VocabEntry, updateMastery } from "../lib/vocab";
+import { getWorkspaceFiles } from "../lib/workspace";
 import { buildQuizFromVocab } from "../lib/replQuiz";
 import { streamAssistantResponse } from "../lib/replAi";
 import { readFileForReview } from "../lib/replFiles";
 import {
   CMD_BLAME_PREFIX,
   CMD_COMMIT,
+  CMD_CLEAR,
   CMD_CONFIG,
   CMD_DAILY_PREFIX,
   CMD_ENTREVISTA,
@@ -27,6 +30,7 @@ import {
   buildRoastPrompt,
   COMMIT_PROMPT_INJECT,
   DAILY_PROMPT_INJECT,
+  buildMentionContextPrompt,
   PR_PROMPT_INJECT,
   REVISAR_PROMPT_INJECT,
 } from "../prompts/system";
@@ -61,6 +65,10 @@ const THINKING_MESSAGES = [
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const MESSAGE_ROTATION_MS = 1500;
 const SPINNER_ROTATION_MS = 100;
+const MENTION_REGEX = /@([A-Za-z0-9._/-]+(?:\.[A-Za-z0-9._-]+)?)/g;
+const ACTIVE_MENTION_REGEX = /(^|\s)@([^\s]*)$/;
+
+const normalizeMentionPath = (value: string) => value.replace(/^@+/, "").trim();
 
 const pickRandomThinkingMessage = () =>
   THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)]!;
@@ -76,8 +84,10 @@ export const useReplController = ({
   const [inputKey, setInputKey] = useState(0);
   const [isStreaming, setIsStreaming] = useState(false);
   const [history, setHistory] = useState<Message[]>([]);
+  const [historyHydrated, setHistoryHydrated] = useState(false);
   const [currentStream, setCurrentStream] = useState("");
   const [vocabList, setVocabList] = useState<VocabEntry[]>([]);
+  const [workspaceFiles, setWorkspaceFiles] = useState<string[]>([]);
   const [showSidebar, setShowSidebar] = useState(true);
   const [quiz, setQuiz] = useState<QuizState>({ active: false });
   const [interviewQuestion, setInterviewQuestion] = useState<string | null>(null);
@@ -110,6 +120,32 @@ export const useReplController = ({
 
     loadVocab();
   }, []);
+
+  useEffect(() => {
+    const loadWorkspaceFiles = async () => {
+      setWorkspaceFiles(await getWorkspaceFiles());
+    };
+
+    loadWorkspaceFiles();
+  }, []);
+
+  useEffect(() => {
+    const hydrateHistory = async () => {
+      const savedHistory = await loadHistory();
+      setHistory(savedHistory);
+      setHistoryHydrated(true);
+    };
+
+    hydrateHistory();
+  }, []);
+
+  useEffect(() => {
+    if (!historyHydrated) return;
+
+    void saveHistory(history).catch(() => {
+      // Ignore disk write failures.
+    });
+  }, [history, historyHydrated]);
 
   useEffect(() => {
     if (!isThinking) return;
@@ -158,12 +194,46 @@ export const useReplController = ({
   const stripHiddenBlock = (text: string, label: string) =>
     text.replace(new RegExp(`\\|\\|\\|${label}\\|\\|\\|[\\s\\S]*?\\|\\|\\|END_${label}\\|\\|\\|`, "g"), "").trim();
 
-  const runAssistantPrompt = async (prompt: string) => {
+  const activeMentionMatch = input.match(ACTIVE_MENTION_REGEX);
+  const activeMentionQuery = activeMentionMatch?.[2] ?? "";
+  const mentionSuggestions = workspaceFiles
+    .filter((filePath) => filePath.startsWith(activeMentionQuery))
+    .sort((a, b) => a.length - b.length)
+    .slice(0, 8);
+  const showMentionMenu = Boolean(activeMentionMatch && mentionSuggestions.length > 0);
+
+  const resolveMentionContext = async (query: string) => {
+    const paths = [...query.matchAll(MENTION_REGEX)]
+      .map((match) => match[1])
+      .filter((path): path is string => Boolean(path));
+
+    const uniquePaths = [...new Set(paths)];
+    const contexts: { path: string; content: string }[] = [];
+
+    for (const filePath of uniquePaths) {
+      try {
+        const file = Bun.file(filePath);
+        if (!(await file.exists())) continue;
+
+        const content = await file.text();
+        if (!content.trim()) continue;
+
+        contexts.push({ path: filePath, content });
+      } catch {
+        continue;
+      }
+    }
+
+    return buildMentionContextPrompt(contexts);
+  };
+
+  const runAssistantPrompt = async (prompt: string, system?: string) => {
     let hasReceivedFirstChunk = false;
 
     let visibleText = await streamAssistantResponse({
       config,
       prompt,
+      system,
       onText: (text) => {
         if (!hasReceivedFirstChunk && text.trim().length > 0) {
           hasReceivedFirstChunk = true;
@@ -189,6 +259,13 @@ export const useReplController = ({
   const handleGlobalInput = (char: string, key: { ctrl?: boolean; tab?: boolean }) => {
     if (key.ctrl && char === "b") {
       setShowSidebar((prev) => !prev);
+    }
+
+    if (key.tab && showMentionMenu && mentionSuggestions.length > 0) {
+      const match = mentionSuggestions[0]!;
+      setInput((prev) => prev.replace(ACTIVE_MENTION_REGEX, `$1@${match} `));
+      setInputKey((prev) => prev + 1);
+      return;
     }
 
     if (key.tab && showMenu && filteredCommands.length > 0) {
@@ -355,6 +432,18 @@ export const useReplController = ({
       return;
     }
 
+    if (trimmedQuery === CMD_CLEAR) {
+      await clearHistory();
+      setInput("");
+      setCurrentStream("");
+      setHistory([]);
+      setQuiz({ active: false });
+      setInterviewQuestion(null);
+      setPendingCommit(null);
+      setPendingPr(null);
+      return;
+    }
+
     setInput("");
     setCurrentStream("");
     setHistory((prev) => [...prev, { role: "user", text: query }]);
@@ -459,7 +548,7 @@ export const useReplController = ({
       aiPrompt = `${DAILY_PROMPT_INJECT}\n\nUser Update: "${updateText}"`;
     } else if (!interviewQuestion && query.startsWith(CMD_BLAME_PREFIX)) {
       startThinking();
-      const filePath = query.slice(CMD_BLAME_PREFIX.length).trim();
+      const filePath = normalizeMentionPath(query.slice(CMD_BLAME_PREFIX.length));
 
       if (!filePath) {
         stopThinking();
@@ -507,7 +596,7 @@ export const useReplController = ({
       }
     } else if (!interviewQuestion && query.startsWith(CMD_REVISAR_PREFIX)) {
       startThinking();
-      const filePath = query.slice(CMD_REVISAR_PREFIX.length).trim();
+      const filePath = normalizeMentionPath(query.slice(CMD_REVISAR_PREFIX.length));
 
       if (!filePath) {
         stopThinking();
@@ -548,11 +637,12 @@ export const useReplController = ({
     setIsStreaming(true);
 
     try {
+      const mentionContext = await resolveMentionContext(query);
       const userContent =
         query === CMD_ROAST
           ? buildRoastPrompt(await getLatestGitDiff())
           : aiPrompt;
-      const visibleText = await runAssistantPrompt(userContent);
+      const visibleText = await runAssistantPrompt(userContent, mentionContext || undefined);
       if (isPrCommand && visibleText.trim()) {
         setPendingPr(visibleText);
       }
@@ -572,6 +662,7 @@ export const useReplController = ({
     isStreaming,
     isThinking,
     history,
+    historyHydrated,
     currentStream,
     loadingMessage,
     loadingIndicator,
@@ -583,6 +674,8 @@ export const useReplController = ({
     pendingPr,
     filteredCommands,
     showMenu,
+    mentionSuggestions,
+    showMentionMenu,
     setInput,
     handleGlobalInput,
     handleQuizSubmit,

@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text } from "ink";
 import { CLI_BRAND_COLOR } from "../../constants/ui";
+import { Header } from "../Header";
 import { Markdown } from "./Markdown";
 import type { Message } from "./types";
 
@@ -26,6 +27,7 @@ export const HistoryPane = ({
     overflow="hidden"
     width="100%"
   >
+    <Header />
     {history.map((msg, i) => (
       <Box key={i} flexDirection="column" marginBottom={1} flexShrink={0}>
         {msg.role === "user" ? (
@@ -34,8 +36,6 @@ export const HistoryPane = ({
           </Text>
         ) : (
           <Box
-            borderStyle="round"
-            borderColor="red"
             paddingX={1}
             flexDirection="column"
             width="100%"

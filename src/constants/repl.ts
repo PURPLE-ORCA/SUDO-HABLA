@@ -8,6 +8,7 @@ export const CMD_MEANING_PREFIX = "/meaning ";
 export const CMD_QUIZ = "/quiz";
 export const CMD_COMMIT = "/commit";
 export const CMD_PR = "/pr";
+export const CMD_CLEAR = "/clear";
 export const CMD_CONFIG = "/config";
 export const CMD_EXIT = "/exit";
 
@@ -22,6 +23,7 @@ export const REPL_COMMANDS = [
   { label: "/meaning <word> - Translate and explain a term", value: CMD_MEANING_PREFIX },
   { label: "/quiz - Test your vocab mastery", value: CMD_QUIZ },
   { label: "/pr - Generate a PR description from your branch", value: CMD_PR },
+  { label: "/clear - Wipe chat history", value: CMD_CLEAR },
   { label: "/config - Change provider/model", value: CMD_CONFIG },
   { label: "/exit - Quit the application", value: CMD_EXIT },
 ];

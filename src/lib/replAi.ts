@@ -10,10 +10,12 @@ import { buildMissingApiKeyMessage } from "../prompts/messages";
 export const streamAssistantResponse = async ({
   config,
   prompt,
+  system = SYSTEM_PROMPT,
   onText,
 }: {
   config: Config;
   prompt: string;
+  system?: string;
   onText: (visibleText: string) => void;
 }) => {
   const providerApiKey = config.apiKeys[config.activeProvider];
@@ -38,7 +40,7 @@ export const streamAssistantResponse = async ({
   try {
     const { textStream } = await streamText({
       model,
-      system: SYSTEM_PROMPT,
+      system,
       prompt,
     });
 
