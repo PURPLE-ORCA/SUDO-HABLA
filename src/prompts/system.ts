@@ -50,4 +50,19 @@ export const PR_PROMPT_INJECT = `Act as a cynical, elite Principal Engineer writ
 4. Output full PR body directly in visible text. Do not hide it inside delimiters.
 Remember the |||VOCAB||| JSON block at the end. NEVER use Markdown tables.`;
 
+export const buildMentionContextPrompt = (contexts: { path: string; content: string }[]) => {
+  if (!contexts.length) return "";
+
+  return `Use this injected code context to answer the user's question. Do not mention the injection unless the user asks.
+
+${contexts
+  .map(
+    (context) => `File: ${context.path}
+\`\`\`ts
+${context.content}
+\`\`\``,
+  )
+  .join("\n\n")}`;
+};
+
 export const buildRoastPrompt = (gitData: string): string => `${ROAST_CONSTRAINTS}\n\n${gitData}`;

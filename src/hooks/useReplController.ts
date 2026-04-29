@@ -29,6 +29,7 @@ import {
   buildRoastPrompt,
   COMMIT_PROMPT_INJECT,
   DAILY_PROMPT_INJECT,
+  buildMentionContextPrompt,
   PR_PROMPT_INJECT,
   REVISAR_PROMPT_INJECT,
 } from "../prompts/system";
@@ -63,6 +64,7 @@ const THINKING_MESSAGES = [
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 const MESSAGE_ROTATION_MS = 1500;
 const SPINNER_ROTATION_MS = 100;
+const MENTION_REGEX = /@([A-Za-z0-9._/-]+(?:\.[A-Za-z0-9._-]+)?)/g;
 
 const pickRandomThinkingMessage = () =>
   THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)]!;
@@ -179,12 +181,38 @@ export const useReplController = ({
   const stripHiddenBlock = (text: string, label: string) =>
     text.replace(new RegExp(`\\|\\|\\|${label}\\|\\|\\|[\\s\\S]*?\\|\\|\\|END_${label}\\|\\|\\|`, "g"), "").trim();
 
-  const runAssistantPrompt = async (prompt: string) => {
+  const resolveMentionContext = async (query: string) => {
+    const paths = [...query.matchAll(MENTION_REGEX)]
+      .map((match) => match[1])
+      .filter((path): path is string => Boolean(path));
+
+    const uniquePaths = [...new Set(paths)];
+    const contexts: { path: string; content: string }[] = [];
+
+    for (const filePath of uniquePaths) {
+      try {
+        const file = Bun.file(filePath);
+        if (!(await file.exists())) continue;
+
+        const content = await file.text();
+        if (!content.trim()) continue;
+
+        contexts.push({ path: filePath, content });
+      } catch {
+        continue;
+      }
+    }
+
+    return buildMentionContextPrompt(contexts);
+  };
+
+  const runAssistantPrompt = async (prompt: string, system?: string) => {
     let hasReceivedFirstChunk = false;
 
     let visibleText = await streamAssistantResponse({
       config,
       prompt,
+      system,
       onText: (text) => {
         if (!hasReceivedFirstChunk && text.trim().length > 0) {
           hasReceivedFirstChunk = true;
@@ -581,11 +609,12 @@ export const useReplController = ({
     setIsStreaming(true);
 
     try {
+      const mentionContext = await resolveMentionContext(query);
       const userContent =
         query === CMD_ROAST
           ? buildRoastPrompt(await getLatestGitDiff())
           : aiPrompt;
-      const visibleText = await runAssistantPrompt(userContent);
+      const visibleText = await runAssistantPrompt(userContent, mentionContext || undefined);
       if (isPrCommand && visibleText.trim()) {
         setPendingPr(visibleText);
       }
