@@ -13,6 +13,7 @@ import { checkForUpdates } from "../lib/update";
 import packageJson from "../../package.json";
 import {
   CMD_BLAME_PREFIX,
+  CMD_COMMENT_PREFIX,
   CMD_COMMIT,
   CMD_CLEAR,
   CMD_CONFIG,
@@ -30,6 +31,7 @@ import {
 import {
   BLAME_PROMPT_INJECT,
   buildRoastPrompt,
+  COMMENT_PROMPT_INJECT,
   COMMIT_PROMPT_INJECT,
   DAILY_PROMPT_INJECT,
   buildMentionContextPrompt,
@@ -665,6 +667,43 @@ export const useReplController = ({
           .join("\n");
 
         aiPrompt = `${BLAME_PROMPT_INJECT}\n\nFile: ${blameSummary.filePath}\nCulprit: ${blameSummary.culprit}\nOwned non-empty lines: ${blameSummary.lineCount}\nBlamed snippets:\n${snippetLines}`;
+      } catch (error) {
+        stopThinking();
+        setHistory((prev) => [
+          ...prev,
+          { role: "assistant", text: buildFileReadErrorMessage(error) },
+        ]);
+        return;
+      }
+    } else if (!interviewQuestion && query.startsWith(CMD_COMMENT_PREFIX)) {
+      startThinking();
+      const filePath = normalizeMentionPath(query.slice(CMD_COMMENT_PREFIX.length));
+
+      if (!filePath) {
+        stopThinking();
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text: "Usage: /comment @filepath",
+          },
+        ]);
+        return;
+      }
+
+      try {
+        const file = Bun.file(filePath);
+        if (!(await file.exists())) {
+          stopThinking();
+          setHistory((prev) => [
+            ...prev,
+            { role: "assistant", text: buildMissingFileMessage(filePath) },
+          ]);
+          return;
+        }
+
+        const fileContent = await file.text();
+        aiPrompt = `${COMMENT_PROMPT_INJECT}\n\nFile: ${filePath}\n\n\`\`\`\n${fileContent}\n\`\`\``;
       } catch (error) {
         stopThinking();
         setHistory((prev) => [
