@@ -6,6 +6,8 @@ import { clearHistory, loadHistory, saveHistory } from "../lib/session";
 import { summarizeFileBlame } from "../lib/replBlame";
 import { getVocab, type VocabEntry, updateMastery } from "../lib/vocab";
 import { getWorkspaceContext, getWorkspaceFiles } from "../lib/workspace";
+import { getProjectSkeleton } from "../lib/scanner";
+import { loadAgentTemplate } from "../lib/agentParser";
 import { buildQuizFromVocab } from "../lib/replQuiz";
 import { streamAssistantResponse } from "../lib/replAi";
 import { readFileForReview } from "../lib/replFiles";
@@ -19,6 +21,7 @@ import {
   CMD_CONFIG,
   CMD_DAILY_PREFIX,
   CMD_ENTREVISTA,
+  CMD_EXPLORE_PREFIX,
   CMD_EXIT,
   CMD_MEANING_PREFIX,
   CMD_QUIZ,
@@ -709,6 +712,39 @@ export const useReplController = ({
         setHistory((prev) => [
           ...prev,
           { role: "assistant", text: buildFileReadErrorMessage(error) },
+        ]);
+        return;
+      }
+    } else if (!interviewQuestion && query.startsWith(CMD_EXPLORE_PREFIX)) {
+      startThinking();
+      const templateName = query.slice(CMD_EXPLORE_PREFIX.length).trim();
+
+      if (!templateName) {
+        stopThinking();
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text: "Usage: /explore <template>",
+          },
+        ]);
+        return;
+      }
+
+      try {
+        const systemPrompt = await loadAgentTemplate(templateName);
+        const skeleton = await getProjectSkeleton();
+        aiPrompt = `${systemPrompt}\n\n${skeleton}\n\nRemember to append hidden vocab block exactly:\n|||VOCAB||| [{\"word\": \"el despliegue\", \"translation\": \"the deployment\"}] |||END_VOCAB|||`;
+      } catch (error: any) {
+        stopThinking();
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text:
+              error?.message ||
+              `Template not found: ${templateName}. Expected .sudo-habla/agents/${templateName}.md`,
+          },
         ]);
         return;
       }

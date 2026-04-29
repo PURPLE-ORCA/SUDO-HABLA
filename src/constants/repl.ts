@@ -3,6 +3,7 @@ export const CMD_LORE = "/lore";
 export const CMD_DAILY_PREFIX = "/daily ";
 export const CMD_REVISAR_PREFIX = "/revisar ";
 export const CMD_COMMENT_PREFIX = "/comment @";
+export const CMD_EXPLORE_PREFIX = "/explore ";
 export const CMD_BLAME_PREFIX = "/blame ";
 export const CMD_ENTREVISTA = "/entrevista";
 export const CMD_MEANING_PREFIX = "/meaning ";
@@ -20,6 +21,7 @@ export const REPL_COMMANDS = [
   { label: "/daily <update> - Give your standup update", value: CMD_DAILY_PREFIX },
   { label: "/revisar <filepath> - Roast a specific file", value: CMD_REVISAR_PREFIX },
   { label: "/comment @filepath - Generate a structured usage docblock for a file", value: "/comment " },
+  { label: "/explore <template> - Generate project docs based on a template", value: CMD_EXPLORE_PREFIX },
   { label: "/blame <filepath> - Blame exact coworker for file", value: CMD_BLAME_PREFIX },
   { label: "/entrevista - Start a technical interview", value: CMD_ENTREVISTA },
   { label: "/meaning <word> - Translate and explain a term", value: CMD_MEANING_PREFIX },
