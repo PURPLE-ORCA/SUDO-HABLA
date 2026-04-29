@@ -1,3 +1,42 @@
+## MISSION DEBRIEF: /explore Template Picker + Write Confirm
+
+### Executive Summary
+Shipped `/explore` second-pass UX hardening. Added interactive template picker (PRODUCT/ARCHITECTURE/README), built-in fallback templates, auto-create `.sudo-habla/agents` directory (no auto-seed files), and post-generation Yes/No write confirmation that saves selected markdown file to project root. Forced explore output language to technical Spanish. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: Missing Template Trap**
+- *What:* `/explore product` failed on fresh repo with `Template not found`.
+- *Why:* Directory existed or got created, but no template files; loader had no fallback.
+- *Fix:* Added built-in templates for `product`, `architecture`, `readme` in `agentParser` while still preferring local/global files.
+
+**Iteration 2: Picker Flow**
+- *What:* `/explore` needed guided choice instead of forcing manual template typing.
+- *Why:* Typo/path friction caused repeated misses.
+- *Fix:* Added `pendingExplore` state + `ExploreTemplatePanel` (SelectInput) with PRODUCT.md, ARCHITECTURE.md, README.md, Cancel. Choosing item triggers standard `/explore <template>` path.
+
+**Iteration 3: No Auto-Seed Policy**
+- *What:* Auto-creating template files polluted repo and hid source-of-truth intent.
+- *Why:* User wanted curated selection UX without writing default files.
+- *Fix:* Removed template auto-seed logic. Kept only auto-create directory (`mkdir -p .sudo-habla/agents`) on loader call.
+
+**Iteration 4: Write Confirmation Panel**
+- *What:* Explore output appeared in chat only; user wanted explicit write-to-root action.
+- *Why:* Needed safe confirmation like `/commit` flow.
+- *Fix:* Added `pendingExploreWrite` state + `ExploreWritePanel` (Yes/No). Yes writes mapped file name to root (`PRODUCT.md`, `ARCHITECTURE.md`, `README.md`, or fallback uppercased template). No cancels.
+
+**Iteration 5: English Output Bug**
+- *What:* Generated docs came out in English.
+- *Why:* Built-in template prompts were English-first.
+- *Fix:* Rewrote built-in prompts in Spanish and added hard instruction during `/explore` prompt composition: full document must be technical Spanish.
+
+### Future Note
+1. Could add preview diff before writing file.
+2. Could add overwrite warning when target file already exists.
+3. Could add custom filename mapping in template frontmatter.
+
+---
+
 ## MISSION DEBRIEF: Sliding Window Scroll
 
 ### Executive Summary

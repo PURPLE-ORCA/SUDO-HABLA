@@ -4,21 +4,24 @@ const LOCAL_AGENTS_DIR = `${process.cwd()}/.sudo-habla/agents`;
 const GLOBAL_AGENTS_DIR = `${os.homedir()}/.sudo-habla/agents`;
 
 const BUILTIN_TEMPLATES: Record<string, string> = {
-  readme: `Act as a senior documentation engineer.
-Generate README.md for this project from provided context.
-Include sections: Overview, Tech Stack, Setup, Scripts, Project Structure, Usage, and Notes.
-Keep content specific to observed dependencies and architecture tree.
-Remember hidden vocab block at end.`,
-  product: `Act as a principal product engineer.
-Generate PRODUCT.md for this project from provided context.
-Include sections: Vision, Target Users, Core Features, Architecture Summary, Non-Functional Requirements, and Roadmap.
-Ground every section in observed stack and directory tree. Avoid generic filler.
-Remember hidden vocab block at end.`,
-  architecture: `Act as a staff architect.
-Generate ARCHITECTURE.md from provided project context.
-Include sections: System Overview, Runtime & Tooling, Module Boundaries, Data Flow, Operational Constraints, and Extension Points.
-Be precise and implementation-grounded.
-Remember hidden vocab block at end.`,
+  readme: `Actúa como Senior Engineer de documentación.
+Genera README.md COMPLETO en español técnico (castellano), no en inglés.
+Incluye secciones: Resumen, Stack Tecnológico, Instalación, Scripts, Estructura del Proyecto, Uso, Notas.
+Adapta contenido al contexto real (dependencias y árbol). Prohibido texto genérico.
+Prohibido tablas Markdown.
+Recuerda añadir bloque oculto al final: |||VOCAB||| [...] |||END_VOCAB|||.`,
+  product: `Actúa como Principal Product Engineer.
+Genera PRODUCT.md COMPLETO en español técnico (castellano), no en inglés.
+Incluye secciones: Visión, Usuarios Objetivo, Funcionalidades Clave, Resumen de Arquitectura, Requisitos No Funcionales, Roadmap.
+Fundamenta cada sección en stack y estructura real. Evita relleno genérico.
+Prohibido tablas Markdown.
+Recuerda añadir bloque oculto al final: |||VOCAB||| [...] |||END_VOCAB|||.`,
+  architecture: `Actúa como Staff Architect.
+Genera ARCHITECTURE.md COMPLETO en español técnico (castellano), no en inglés.
+Incluye secciones: Vista General del Sistema, Runtime y Tooling, Límites de Módulos, Flujo de Datos, Restricciones Operativas, Puntos de Extensión.
+Sé preciso y aterrizado a implementación real.
+Prohibido tablas Markdown.
+Recuerda añadir bloque oculto al final: |||VOCAB||| [...] |||END_VOCAB|||.`,
 };
 
 const parseTemplate = (content: string): string => {

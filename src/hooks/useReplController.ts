@@ -80,6 +80,22 @@ const normalizeMentionPath = (value: string) => value.replace(/^@+/, "").trim();
 const pickRandomThinkingMessage = () =>
   THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)]!;
 
+const getExploreOutputFileName = (templateName: string) => {
+  const normalized = templateName
+    .trim()
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .pop()
+    ?.replace(/\.md$/i, "")
+    .toLowerCase();
+
+  if (normalized === "product") return "PRODUCT.md";
+  if (normalized === "architecture") return "ARCHITECTURE.md";
+  if (normalized === "readme") return "README.md";
+  return `${(normalized || "EXPLORE_OUTPUT").toUpperCase()}.md`;
+};
+
 export const useReplController = ({
   config,
   onConfigReset,
@@ -101,6 +117,10 @@ export const useReplController = ({
   const [pendingCommit, setPendingCommit] = useState<string | null>(null);
   const [pendingPr, setPendingPr] = useState<string | null>(null);
   const [pendingExplore, setPendingExplore] = useState(false);
+  const [pendingExploreWrite, setPendingExploreWrite] = useState<{
+    fileName: string;
+    content: string;
+  } | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
   const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
@@ -302,7 +322,8 @@ export const useReplController = ({
       return;
     }
 
-    const hasActivePanel = quiz.active || pendingCommit || pendingPr || pendingExplore;
+    const hasActivePanel =
+      quiz.active || pendingCommit || pendingPr || pendingExplore || pendingExploreWrite;
 
     if (!hasActivePanel) {
       const maxScroll = Math.max(0, history.length - maxVisible);
@@ -493,6 +514,34 @@ export const useReplController = ({
     await handleSubmit(`${CMD_EXPLORE_PREFIX}${choice}`);
   };
 
+  const handleExploreWriteConfirm = async (item: { value: string }) => {
+    if (!pendingExploreWrite) return;
+
+    const { fileName, content } = pendingExploreWrite;
+    setPendingExploreWrite(null);
+
+    if (item.value === "yes") {
+      try {
+        await Bun.write(fileName, `${content.trim()}\n`);
+        setHistory((prev) => [
+          ...prev,
+          { role: "assistant", text: `Wrote ${fileName} in project root.` },
+        ]);
+      } catch (error: any) {
+        setHistory((prev) => [
+          ...prev,
+          { role: "assistant", text: `Failed to write ${fileName}: ${error?.message ?? error}` },
+        ]);
+      }
+      return;
+    }
+
+    setHistory((prev) => [
+      ...prev,
+      { role: "assistant", text: `Cancelled writing ${fileName}.` },
+    ]);
+  };
+
   const handleSubmit = async (query: string) => {
     setScrollOffset(0);
 
@@ -542,6 +591,7 @@ export const useReplController = ({
       setPendingCommit(null);
       setPendingPr(null);
       setPendingExplore(false);
+      setPendingExploreWrite(null);
       return;
     }
 
@@ -551,6 +601,10 @@ export const useReplController = ({
 
     let aiPrompt = query;
     const isPrCommand = query.trim() === CMD_PR;
+    const isExploreCommand = query.startsWith(CMD_EXPLORE_PREFIX);
+    const exploreTemplateName = isExploreCommand
+      ? query.slice(CMD_EXPLORE_PREFIX.length).trim()
+      : "";
 
     if (query.trim() === CMD_EXPLORE_PREFIX.trim()) {
       setPendingExplore(true);
@@ -756,7 +810,7 @@ export const useReplController = ({
       try {
         const systemPrompt = await loadAgentTemplate(templateName);
         const skeleton = await getProjectSkeleton();
-        aiPrompt = `${systemPrompt}\n\n${skeleton}\n\nRemember to append hidden vocab block exactly:\n|||VOCAB||| [{\"word\": \"el despliegue\", \"translation\": \"the deployment\"}] |||END_VOCAB|||`;
+        aiPrompt = `${systemPrompt}\n\n${skeleton}\n\nInstrucción obligatoria: redacta TODO el documento final en español técnico (castellano). No escribas contenido en inglés salvo traducciones puntuales entre paréntesis si aplican.\n\nRemember to append hidden vocab block exactly:\n|||VOCAB||| [{\"word\": \"el despliegue\", \"translation\": \"the deployment\"}] |||END_VOCAB|||`;
       } catch (error: any) {
         stopThinking();
         setHistory((prev) => [
@@ -829,6 +883,12 @@ export const useReplController = ({
       if (isPrCommand && visibleText.trim()) {
         setPendingPr(visibleText);
       }
+      if (isExploreCommand && visibleText.trim()) {
+        setPendingExploreWrite({
+          fileName: getExploreOutputFileName(exploreTemplateName),
+          content: visibleText,
+        });
+      }
     } catch (error) {
       stopThinking();
       appendAssistantError(error);
@@ -856,6 +916,7 @@ export const useReplController = ({
     pendingCommit,
     pendingPr,
     pendingExplore,
+    pendingExploreWrite,
     filteredCommands,
     showMenu,
     mentionSuggestions,
@@ -870,6 +931,7 @@ export const useReplController = ({
     handleCommitConfirm,
     handlePrAction,
     handleExploreTemplateSelect,
+    handleExploreWriteConfirm,
     handleSubmit,
   };
 };
