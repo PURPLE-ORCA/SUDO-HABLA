@@ -1,3 +1,27 @@
+## MISSION DEBRIEF: Workspace Brain
+
+### Executive Summary
+Auto-detect local AI context files and inject into every prompt. Scans `llms.txt`, `.cursorrules`, `AGENT.md`, `AI.md` in `process.cwd()`. Returns formatted block `=== REPOSITORY RULES ===`. Silent fail. Zero UI noise. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: The Scanner**
+- *What:* Added `getWorkspaceContext()` to `src/lib/workspace.ts`.
+- *Why:* Need local project guidelines injected into AI context for terrifying accuracy.
+- *Fix:* Iterate contextFiles array, `Bun.file(path).exists()` check, `text()` on first match, formatted return.
+
+**Iteration 2: The Injection Point**
+- *What:* Where to inject in handleSubmit?
+- *Why:* Must be after all command interceptors format `aiPrompt`, but before `runAssistantPrompt`.
+- *Fix:* Placed call just before `startThinking()`, appends to `userContent` via `+= workspaceContext`.
+
+### Future Note
+1. Could support multiple files and merge (current: first match only).
+2. Could add `.aider.chat.history` or other AI metadata files.
+3. Could cache file reads to avoid repeated I/O in same session.
+
+---
+
 ## MISSION DEBRIEF: Update Nag (Distribution)
 
 ### Executive Summary
