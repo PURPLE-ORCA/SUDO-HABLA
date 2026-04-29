@@ -1,3 +1,76 @@
+## MISSION DEBRIEF: Update Nag (Distribution)
+
+### Executive Summary
+Shipped a background update checker that pings the NPM registry asynchronously on boot, compares semver versions, and renders a bright yellow nag below the ASCII logo if the user is behind. Uses a 24-hour TTL cache stored in `~/.sudo-habla.json` to avoid hammering the registry. Zero impact on the 300ms boot path. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: The Architecture**
+- *What:* Built `src/lib/update.ts` with `checkForUpdates(localVersion)`.
+- *Why:* NPM global packages don't auto-update. Users stay stuck on old versions forever.
+- *Fix:* Pure async fetch. No blocking. Wrapped in `try/catch` so network failures are silent.
+
+**Iteration 2: Semver, Not String Compare**
+- *What:* Simple string comparison (`"1.10.0" > "1.9.0"`) fails because lexicographic ordering is wrong.
+- *Why:* Need correct version ordering.
+- *Fix:* Hand-rolled `parseSemver()` and `isNewer()` that destructure into `[major, minor, patch]` and compare numerically. No external dependency.
+
+**Iteration 3: The TTL Cache**
+- *What:* Hitting NPM on every boot is rude and slow.
+- *Why:* Registry rate limits, user patience.
+- *Fix:* Added `lastUpdateCheck` to `Config` type. Stores `{ timestamp, version }`. If cache age < 24h, returns cached result immediately. Writes cache back to disk best-effort (swallows write errors).
+
+**Iteration 4: The Render**
+- *What:* Where to show the nag?
+- *Why:* Must be visible but not intrusive.
+- *Fix:* Passed `updateAvailable` through `useReplController` → `Repl` → `ReplHeader`. Renders `<Text color="yellow">` directly below the logo. Conditionally rendered only when `updateAvailable` is truthy.
+
+### Future Note
+1. Could add a `/version` command to explicitly check for updates on demand.
+2. Could show changelog URL or release notes in the nag.
+3. Could add an auto-update command (`/update`) that runs `bun add -g sudo-habla` for the user.
+
+---
+
+## AUTOPSY REPORT: Sliding Window Scroll
+
+### Executive Summary
+Shipped a message-count-based sliding window scroll system for Ink's totalitarian rendering engine. Since Ink constantly overwrites stdout, native mouse wheel scrolling is destroyed. We built a "camera" that slices `history` via `scrollOffset` and renders only the visible window. Arrow keys and PageUp/PageDown move the camera. Active panels (quiz, commit confirm, PR actions) suppress scroll keys to avoid fighting `ink-select-input`. Inline indicator shows when older messages are above the fold. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: The Architecture**
+- *What:* Added `scrollOffset` state and `maxVisible` derived from `dimensions.rows - 12` (min 5).
+- *Why:* Ink has no native scroll concept. We must manually window the history array.
+- *Fix:* `history.slice(history.length - maxVisible - scrollOffset, history.length - scrollOffset)`.
+
+**Iteration 2: The Key Binding**
+- *What:* Bound `↑`/`↓` to +/- 1 message, `PageUp`/`PageDown` to +/- `maxVisible`.
+- *Why:* Standard terminal scroll behavior. Page keys for fast traversal.
+- *Fix:* Expanded `handleGlobalInput` type signature. Guarded with `hasActivePanel` check to avoid hijacking `SelectInput` focus in quiz/commit/PR panels.
+
+**Iteration 3: The Auto-Clamp**
+- *What:* If history shrinks (e.g., `/clear`) or terminal resizes, `scrollOffset` could point past the array.
+- *Why:* Unbounded offset causes empty panes or negative slices.
+- *Fix:* `useEffect` watches `[history.length, maxVisible]` and clamps `scrollOffset` to `Math.min(prev, maxScroll)`.
+
+**Iteration 4: The Inline Indicator**
+- *What:* User needs to know they're not at the bottom.
+- *Why:* Without visual feedback, scrolled state is invisible.
+- *Fix:* `HistoryPane` renders `↑ {scrollOffset} older messages ↑` inline when `scrollOffset > 0`.
+
+**Iteration 5: The Reset on Submit**
+- *What:* When user sends a new message, should camera snap to bottom?
+- *Decision:* Yes. `setScrollOffset(0)` at the top of `handleSubmit`. New input means user wants to see the response.
+
+### Future Note
+1. Could add `Home`/`End` keys for jump-to-top/bottom.
+2. Could persist scroll position across sessions (probably not useful).
+3. Could make `maxVisible` smarter: account for message heights instead of raw count.
+4. Could add mouse wheel support via raw mode (complex, platform-specific).
+
+---
+
 ## AUTOPSY REPORT: Session Persistence & /clear Command
 
 ### Executive Summary
