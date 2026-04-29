@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStdout } from "ink";
 import { deleteConfig, type Config } from "../lib/config";
 import { getLatestGitDiff, getPullRequestContext } from "../lib/git";
@@ -100,6 +100,7 @@ export const useReplController = ({
   const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
   const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const suppressNextInputChange = useRef(false);
 
   const { stdout } = useStdout();
   const [dimensions, setDimensions] = useState({
@@ -276,8 +277,21 @@ export const useReplController = ({
     return visibleText;
   };
 
-  const handleGlobalInput = (char: string, key: { ctrl?: boolean; tab?: boolean; upArrow?: boolean; downArrow?: boolean; pageUp?: boolean; pageDown?: boolean }) => {
-    if (key.ctrl && char === "b") {
+  const handleGlobalInput = (
+    char: string,
+    key: {
+      ctrl?: boolean;
+      tab?: boolean;
+      upArrow?: boolean;
+      downArrow?: boolean;
+      pageUp?: boolean;
+      pageDown?: boolean;
+      name?: string;
+      sequence?: string;
+    },
+  ) => {
+    if (key.ctrl && (char === "b" || key.name === "b" || key.sequence === "\u0002")) {
+      suppressNextInputChange.current = true;
       setShowSidebar((prev) => !prev);
       return;
     }
@@ -322,6 +336,20 @@ export const useReplController = ({
       setInput(match.endsWith(" ") ? match : `${match} `);
       setInputKey((prev) => prev + 1);
     }
+  };
+
+  const handleInputChange = (value: string) => {
+    setInput((prev) => {
+      if (suppressNextInputChange.current) {
+        suppressNextInputChange.current = false;
+
+        if (value === `${prev}b` || value === `${prev}B`) {
+          return prev;
+        }
+      }
+
+      return value;
+    });
   };
 
   const handleQuizSubmit = async (item: { value: string }) => {
@@ -738,6 +766,7 @@ export const useReplController = ({
     maxVisible,
     updateAvailable,
     setInput,
+    handleInputChange,
     handleGlobalInput,
     handleQuizSubmit,
     handleCommitConfirm,

@@ -76,7 +76,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
             inputKey={repl.inputKey}
             interviewQuestion={repl.interviewQuestion}
             quizActive={repl.quiz.active}
-            onChange={repl.setInput}
+            onChange={repl.handleInputChange}
             onSubmit={repl.handleSubmit}
           />
         )}
