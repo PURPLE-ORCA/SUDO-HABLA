@@ -100,6 +100,7 @@ export const useReplController = ({
   const [interviewQuestion, setInterviewQuestion] = useState<string | null>(null);
   const [pendingCommit, setPendingCommit] = useState<string | null>(null);
   const [pendingPr, setPendingPr] = useState<string | null>(null);
+  const [pendingExplore, setPendingExplore] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
   const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
@@ -301,7 +302,7 @@ export const useReplController = ({
       return;
     }
 
-    const hasActivePanel = quiz.active || pendingCommit || pendingPr;
+    const hasActivePanel = quiz.active || pendingCommit || pendingPr || pendingExplore;
 
     if (!hasActivePanel) {
       const maxScroll = Math.max(0, history.length - maxVisible);
@@ -477,6 +478,21 @@ export const useReplController = ({
     ]);
   };
 
+  const handleExploreTemplateSelect = async (item: { value: string }) => {
+    const choice = item.value;
+    setPendingExplore(false);
+
+    if (choice === "cancel") {
+      setHistory((prev) => [
+        ...prev,
+        { role: "assistant", text: "Explore cancelled." },
+      ]);
+      return;
+    }
+
+    await handleSubmit(`${CMD_EXPLORE_PREFIX}${choice}`);
+  };
+
   const handleSubmit = async (query: string) => {
     setScrollOffset(0);
 
@@ -525,6 +541,7 @@ export const useReplController = ({
       setInterviewQuestion(null);
       setPendingCommit(null);
       setPendingPr(null);
+      setPendingExplore(false);
       return;
     }
 
@@ -534,6 +551,11 @@ export const useReplController = ({
 
     let aiPrompt = query;
     const isPrCommand = query.trim() === CMD_PR;
+
+    if (query.trim() === CMD_EXPLORE_PREFIX.trim()) {
+      setPendingExplore(true);
+      return;
+    }
 
     if (query.trim() === CMD_COMMIT) {
       startThinking();
@@ -833,6 +855,7 @@ export const useReplController = ({
     interviewQuestion,
     pendingCommit,
     pendingPr,
+    pendingExplore,
     filteredCommands,
     showMenu,
     mentionSuggestions,
@@ -846,6 +869,7 @@ export const useReplController = ({
     handleQuizSubmit,
     handleCommitConfirm,
     handlePrAction,
+    handleExploreTemplateSelect,
     handleSubmit,
   };
 };

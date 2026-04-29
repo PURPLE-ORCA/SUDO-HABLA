@@ -9,6 +9,7 @@ import { MentionMenu } from "./repl/MentionMenu";
 import { HistoryPane } from "./repl/HistoryPane";
 import { InputBar } from "./repl/InputBar";
 import { CommitConfirmPanel } from "./repl/CommitConfirmPanel";
+import { ExploreTemplatePanel } from "./repl/ExploreTemplatePanel";
 import { PrActionPanel } from "./repl/PrActionPanel";
 import { QuizPanel } from "./repl/QuizPanel";
 import { ReplHeader } from "./repl/ReplHeader";
@@ -55,11 +56,11 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           maxVisible={repl.maxVisible}
         />
         <CommandMenu
-          showMenu={repl.showMenu && !repl.quiz.active && !repl.pendingPr}
+          showMenu={repl.showMenu && !repl.quiz.active && !repl.pendingPr && !repl.pendingExplore}
           filteredCommands={repl.filteredCommands}
         />
         <MentionMenu
-          showMenu={repl.showMentionMenu && !repl.quiz.active && !repl.pendingPr}
+          showMenu={repl.showMentionMenu && !repl.quiz.active && !repl.pendingPr && !repl.pendingExplore}
           suggestions={repl.mentionSuggestions}
         />
         <QuizPanel quiz={repl.quiz} onSelect={repl.handleQuizSubmit} />
@@ -70,7 +71,8 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           />
         )}
         {repl.pendingPr && <PrActionPanel onSelect={repl.handlePrAction} />}
-        {!repl.quiz.active && !repl.pendingCommit && !repl.pendingPr && (
+        {repl.pendingExplore && <ExploreTemplatePanel onSelect={repl.handleExploreTemplateSelect} />}
+        {!repl.quiz.active && !repl.pendingCommit && !repl.pendingPr && !repl.pendingExplore && (
           <InputBar
             input={repl.input}
             inputKey={repl.inputKey}

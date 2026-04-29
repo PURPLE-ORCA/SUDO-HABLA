@@ -3,34 +3,22 @@ import os from "os";
 const LOCAL_AGENTS_DIR = `${process.cwd()}/.sudo-habla/agents`;
 const GLOBAL_AGENTS_DIR = `${os.homedir()}/.sudo-habla/agents`;
 
-const CURATED_TEMPLATES: Record<string, string> = {
-  "readme.md": `---
-name: readme
-description: Generate concise README from project context
----
-Act as a senior documentation engineer.
-Generate a clean README.md for this project using provided project dependencies and architecture tree.
+const BUILTIN_TEMPLATES: Record<string, string> = {
+  readme: `Act as a senior documentation engineer.
+Generate README.md for this project from provided context.
 Include sections: Overview, Tech Stack, Setup, Scripts, Project Structure, Usage, and Notes.
-Keep tone practical and specific to given context. Avoid generic boilerplate.
-Remember hidden vocab block at very end.`,
-  "product.md": `---
-name: product
-description: Generate product requirements/spec markdown
----
-Act as a principal product engineer.
-Generate PRODUCT.md for this codebase using provided project context.
+Keep content specific to observed dependencies and architecture tree.
+Remember hidden vocab block at end.`,
+  product: `Act as a principal product engineer.
+Generate PRODUCT.md for this project from provided context.
 Include sections: Vision, Target Users, Core Features, Architecture Summary, Non-Functional Requirements, and Roadmap.
-Ground every section in observed stack and structure. Avoid fantasy features.
-Remember hidden vocab block at very end.`,
-  "architecture.md": `---
-name: architecture
-description: Generate architecture guide markdown
----
-Act as a staff architect.
-Generate ARCHITECTURE.md from provided dependencies and directory tree.
+Ground every section in observed stack and directory tree. Avoid generic filler.
+Remember hidden vocab block at end.`,
+  architecture: `Act as a staff architect.
+Generate ARCHITECTURE.md from provided project context.
 Include sections: System Overview, Runtime & Tooling, Module Boundaries, Data Flow, Operational Constraints, and Extension Points.
-Be precise, terse, and implementation-grounded.
-Remember hidden vocab block at very end.`,
+Be precise and implementation-grounded.
+Remember hidden vocab block at end.`,
 };
 
 const parseTemplate = (content: string): string => {
@@ -76,23 +64,20 @@ const listTemplatesInDir = (dirPath: string): string[] => {
   }
 };
 
-const ensureLocalAgentTemplates = async () => {
-  const mkdirProc = Bun.spawnSync({
-    cmd: ["mkdir", "-p", LOCAL_AGENTS_DIR],
-    stderr: "pipe",
-  });
-  if (mkdirProc.exitCode !== 0) return;
-
-  for (const [filename, content] of Object.entries(CURATED_TEMPLATES)) {
-    const filePath = `${LOCAL_AGENTS_DIR}/${filename}`;
-    const file = Bun.file(filePath);
-    if (await file.exists()) continue;
-    await Bun.write(filePath, `${content.trim()}\n`);
+const ensureLocalAgentsDirectory = () => {
+  try {
+    const proc = Bun.spawnSync({
+      cmd: ["mkdir", "-p", LOCAL_AGENTS_DIR],
+      stderr: "pipe",
+    });
+    if (proc.exitCode !== 0) return;
+  } catch {
+    return;
   }
 };
 
 export const loadAgentTemplate = async (templateName: string): Promise<string> => {
-  await ensureLocalAgentTemplates();
+  ensureLocalAgentsDirectory();
 
   const normalizedName = normalizeTemplateInput(templateName);
   if (!normalizedName) {
@@ -110,6 +95,11 @@ export const loadAgentTemplate = async (templateName: string): Promise<string> =
   const globalFile = Bun.file(globalPath);
   if (await globalFile.exists()) {
     return parseTemplate(await globalFile.text());
+  }
+
+  const builtin = BUILTIN_TEMPLATES[normalizedName];
+  if (builtin) {
+    return builtin;
   }
 
   const availableLocal = listTemplatesInDir(LOCAL_AGENTS_DIR).join(", ") || "none";
