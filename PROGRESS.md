@@ -1,3 +1,42 @@
+## MISSION DEBRIEF: Sliding Window Scroll
+
+### Executive Summary
+Shipped a message-count-based sliding window scroll system for Ink's totalitarian rendering engine. Since Ink constantly overwrites stdout, native mouse wheel scrolling is destroyed. We built a "camera" that slices `history` via `scrollOffset` and renders only the visible window. Arrow keys and PageUp/PageDown move the camera. Active panels (quiz, commit confirm, PR actions) suppress scroll keys to avoid fighting `ink-select-input`. Inline indicators show when older/newer messages are off-screen. Debug status line confirms scroll state. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: The Architecture**
+- *What:* Added `scrollOffset` state and `maxVisible` derived from `dimensions.rows - 12` (min 5).
+- *Why:* Ink has no native scroll concept. We must manually window the history array.
+- *Fix:* `history.slice(history.length - maxVisible - scrollOffset, history.length - scrollOffset)`.
+
+**Iteration 2: The Key Binding**
+- *What:* Bound `↑`/`↓` to +/- 1 message, `PageUp`/`PageDown` to +/- `maxVisible`.
+- *Why:* Standard terminal scroll behavior. Page keys for fast traversal.
+- *Fix:* Expanded `handleGlobalInput` type signature. Guarded with `hasActivePanel` check to avoid hijacking `SelectInput` focus in quiz/commit/PR panels.
+
+**Iteration 3: The Window Size Fail**
+- *What:* User reported scrolling did nothing. Arrow keys pressed, no visible change.
+- *Why:* `maxVisible = rows - 12` gave ~28-38 messages for a 40-row terminal. With only 8-10 messages in history, `maxScroll = 0`. Camera had nothing to scroll.
+- *Fix:* Shrunk window to `maxVisible = Math.max(3, Math.floor(rows / 8))`. For 50 rows = 6 messages. With 8 messages, `maxScroll = 2`. Scrolling now triggers.
+
+**Iteration 4: The Visual Confirmation**
+- *What:* User couldn't tell if scrolling worked even after fixing window size.
+- *Why:* No visual feedback when scroll state changed.
+- *Fix:* Added inline indicators: `↑ {n} older messages ↑` and `↓ newer messages below ↓`. Added debug status line at bottom: `[start..end/total msgs | offset:X | visible:Y/Z]`.
+
+**Iteration 5: The Auto-Reset**
+- *What:* When user submits new input, should camera snap to bottom?
+- *Decision:* Yes. `setScrollOffset(0)` at top of `handleSubmit`. New input means user wants to see the response.
+
+### Future Note
+1. Could add `Home`/`End` keys for jump-to-top/bottom.
+2. Could make `maxVisible` smarter: account for actual message line heights instead of raw count.
+3. Could add mouse wheel support via raw mode (complex, platform-specific).
+4. Could persist scroll position across sessions (probably not useful).
+
+---
+
 ## MISSION DEBRIEF: Workspace Brain
 
 ### Executive Summary
@@ -19,6 +58,29 @@ Auto-detect local AI context files and inject into every prompt. Scans `llms.txt
 1. Could support multiple files and merge (current: first match only).
 2. Could add `.aider.chat.history` or other AI metadata files.
 3. Could cache file reads to avoid repeated I/O in same session.
+
+---
+
+## MISSION DEBRIEF: Ctrl+B Input Leak
+
+### Executive Summary
+Fixed Ctrl+B shortcut leaking stray `b` into TextInput while also toggling sidebar. Sidebar toggle now fires cleanly, input field stays pristine. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: The Symptom**
+- *What:* Pressing Ctrl+B toggled sidebar but also appended literal `b` to input.
+- *Why:* `ink-text-input` receives keystroke after `useInput` handler fires. No guard existed.
+- *Fix:* Added `suppressNextInputChange` ref. On Ctrl+B, flag=true before toggle.
+
+**Iteration 2: The Filter**
+- *What:* Flag set, but TextInput still got `b`.
+- *Why:* Need to actually filter the incoming `onChange` value.
+- *Fix:* Wrapped input handler to drop trailing `b`/`B` when suppress flag is true. Reset flag after filter.
+
+### Future Note
+1. Could apply same pattern to other hotkeys that might bleed (Ctrl+C not in use, etc).
+2. Could generalize suppress into a hotkey-to-input-map for cleaner handling.
 
 ---
 
