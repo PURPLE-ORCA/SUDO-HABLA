@@ -5,7 +5,7 @@ import { getLatestGitDiff, getPullRequestContext } from "../lib/git";
 import { clearHistory, loadHistory, saveHistory } from "../lib/session";
 import { summarizeFileBlame } from "../lib/replBlame";
 import { getVocab, type VocabEntry, updateMastery } from "../lib/vocab";
-import { getWorkspaceFiles } from "../lib/workspace";
+import { getWorkspaceContext, getWorkspaceFiles } from "../lib/workspace";
 import { buildQuizFromVocab } from "../lib/replQuiz";
 import { streamAssistantResponse } from "../lib/replAi";
 import { readFileForReview } from "../lib/replFiles";
@@ -107,7 +107,7 @@ export const useReplController = ({
     rows: stdout.rows,
   });
 
-  const maxVisible = Math.max(5, Math.floor(dimensions.rows / 5));
+  const maxVisible = Math.max(3, Math.floor(dimensions.rows / 8));
 
   useEffect(() => {
     const onResize = () =>
@@ -287,19 +287,23 @@ export const useReplController = ({
     if (!hasActivePanel) {
       const maxScroll = Math.max(0, history.length - maxVisible);
       if (key.upArrow) {
-        setScrollOffset((prev) => Math.min(prev + 1, maxScroll));
+        const next = Math.min(scrollOffset + 1, maxScroll);
+        setScrollOffset(next);
         return;
       }
       if (key.downArrow) {
-        setScrollOffset((prev) => Math.max(prev - 1, 0));
+        const next = Math.max(scrollOffset - 1, 0);
+        setScrollOffset(next);
         return;
       }
       if (key.pageUp) {
-        setScrollOffset((prev) => Math.min(prev + maxVisible, maxScroll));
+        const next = Math.min(scrollOffset + maxVisible, maxScroll);
+        setScrollOffset(next);
         return;
       }
       if (key.pageDown) {
-        setScrollOffset((prev) => Math.max(prev - maxVisible, 0));
+        const next = Math.max(scrollOffset - maxVisible, 0);
+        setScrollOffset(next);
         return;
       }
     }
@@ -680,15 +684,22 @@ export const useReplController = ({
       }
     }
 
+    const workspaceContext = await getWorkspaceContext();
+
     startThinking();
     setIsStreaming(true);
 
     try {
       const mentionContext = await resolveMentionContext(query);
-      const userContent =
+      let userContent =
         query === CMD_ROAST
           ? buildRoastPrompt(await getLatestGitDiff())
           : aiPrompt;
+
+      if (workspaceContext) {
+        userContent += workspaceContext;
+      }
+
       const visibleText = await runAssistantPrompt(userContent, mentionContext || undefined);
       if (isPrCommand && visibleText.trim()) {
         setPendingPr(visibleText);
