@@ -44,13 +44,15 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         borderColor={CLI_BRAND_COLOR}
         overflow="hidden"
       >
-        <ReplHeader version={packageJson.version} />
+        <ReplHeader version={packageJson.version} updateAvailable={repl.updateAvailable} />
         <HistoryPane
           key={repl.historyHydrated ? "history-ready" : "history-boot"}
           history={repl.history}
           currentStream={repl.currentStream}
           isThinking={repl.isThinking}
           loadingIndicator={repl.loadingIndicator}
+          scrollOffset={repl.scrollOffset}
+          maxVisible={repl.maxVisible}
         />
         <CommandMenu
           showMenu={repl.showMenu && !repl.quiz.active && !repl.pendingPr}

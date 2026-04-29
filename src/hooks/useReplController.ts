@@ -9,6 +9,8 @@ import { getWorkspaceFiles } from "../lib/workspace";
 import { buildQuizFromVocab } from "../lib/replQuiz";
 import { streamAssistantResponse } from "../lib/replAi";
 import { readFileForReview } from "../lib/replFiles";
+import { checkForUpdates } from "../lib/update";
+import packageJson from "../../package.json";
 import {
   CMD_BLAME_PREFIX,
   CMD_COMMIT,
@@ -96,12 +98,16 @@ export const useReplController = ({
   const [isThinking, setIsThinking] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
   const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
 
   const { stdout } = useStdout();
   const [dimensions, setDimensions] = useState({
     columns: stdout.columns,
     rows: stdout.rows,
   });
+
+  const maxVisible = Math.max(5, Math.floor(dimensions.rows / 5));
 
   useEffect(() => {
     const onResize = () =>
@@ -111,6 +117,15 @@ export const useReplController = ({
       stdout.off("resize", onResize);
     };
   }, [stdout]);
+
+  useEffect(() => {
+    const checkUpdates = async () => {
+      const latest = await checkForUpdates(packageJson.version);
+      setUpdateAvailable(latest);
+    };
+
+    void checkUpdates();
+  }, []);
 
   useEffect(() => {
     const loadVocab = async () => {
@@ -146,6 +161,11 @@ export const useReplController = ({
       // Ignore disk write failures.
     });
   }, [history, historyHydrated]);
+
+  useEffect(() => {
+    const maxScroll = Math.max(0, history.length - maxVisible);
+    setScrollOffset((prev) => Math.min(prev, maxScroll));
+  }, [history.length, maxVisible]);
 
   useEffect(() => {
     if (!isThinking) return;
@@ -256,10 +276,35 @@ export const useReplController = ({
     return visibleText;
   };
 
-  const handleGlobalInput = (char: string, key: { ctrl?: boolean; tab?: boolean }) => {
+  const handleGlobalInput = (char: string, key: { ctrl?: boolean; tab?: boolean; upArrow?: boolean; downArrow?: boolean; pageUp?: boolean; pageDown?: boolean }) => {
     if (key.ctrl && char === "b") {
       setShowSidebar((prev) => !prev);
+      return;
     }
+
+    const hasActivePanel = quiz.active || pendingCommit || pendingPr;
+
+    if (!hasActivePanel) {
+      const maxScroll = Math.max(0, history.length - maxVisible);
+      if (key.upArrow) {
+        setScrollOffset((prev) => Math.min(prev + 1, maxScroll));
+        return;
+      }
+      if (key.downArrow) {
+        setScrollOffset((prev) => Math.max(prev - 1, 0));
+        return;
+      }
+      if (key.pageUp) {
+        setScrollOffset((prev) => Math.min(prev + maxVisible, maxScroll));
+        return;
+      }
+      if (key.pageDown) {
+        setScrollOffset((prev) => Math.max(prev - maxVisible, 0));
+        return;
+      }
+    }
+
+
 
     if (key.tab && showMentionMenu && mentionSuggestions.length > 0) {
       const match = mentionSuggestions[0]!;
@@ -396,6 +441,8 @@ export const useReplController = ({
   };
 
   const handleSubmit = async (query: string) => {
+    setScrollOffset(0);
+
     if (query.trim() === CMD_QUIZ) {
       if (vocabList.length < 4) {
         setHistory((prev) => [
@@ -676,6 +723,9 @@ export const useReplController = ({
     showMenu,
     mentionSuggestions,
     showMentionMenu,
+    scrollOffset,
+    maxVisible,
+    updateAvailable,
     setInput,
     handleGlobalInput,
     handleQuizSubmit,
