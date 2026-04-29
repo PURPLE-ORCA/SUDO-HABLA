@@ -259,3 +259,61 @@ Shipped rotating loading indicator. Hostile messages rotate every 1500ms, braill
 2. Could add visual variants: color changes, different speeds.
 3. Commit confirm flow already shows indicator but needs test.
 4. Could show "Wrote PR_DESCRIPTION.md" success message after export with different spin state.
+
+---
+
+## MISSION DEBRIEF: Context Injection Mentions
+
+### Executive Summary
+Shipped `@filepath` context injection plus autocomplete. Typing `@` now shows workspace file suggestions, Tab inserts path, and submit injects file contents into hidden system prompt. One bug hit: picked path still carried literal `@` into filesystem lookup. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: The Hidden Context Hook**
+- *What:* Added mention parsing and prompt injection flow.
+- *Why it worked:* Kept visible user text intact, pushed file code into hidden system prompt.
+- *Fix:* Reused existing stream pipeline with optional system override.
+
+**Iteration 2: The `@` Autocomplete Layer**
+- *What:* Added suggestions after `@`, filtered by typed path prefix.
+- *Why it worked:* Pulled workspace file list from `git ls-files` and used Tab insertion.
+- *Fix:* Added `MentionMenu` and `getWorkspaceFiles()` helper.
+
+**Iteration 3: The `@` Leakage Bug**
+- *What:* `/revisar @src/components/Repl.tsx` failed with file-not-found.
+- *Why it failed:* UI autocomplete inserted `@path`, but filesystem lookup expected raw path.
+- *Fix:* Normalized mention-prefixed file paths at command boundary with `normalizeMentionPath()`.
+
+### Future Note
+1. Could add fuzzy matching and directory-first ranking.
+2. Could show file type badges in mention menu.
+3. Could cache workspace file list to avoid repeated git scan.
+4. Could support multiline context picks and multiple mention blocks in one question.
+
+# AUTOPSY REPORT: Session Persistence & /clear Command
+
+## Executive Summary
+Shipped persistent chat history backed by `~/.sudo-habla-history.json`. Adds `/clear` command to wipe history and disk. Three iterations: initial hydration sync, disk-gate timing, Ink remount fix. TypeScript clean.
+
+## Battle Log
+
+### Iteration 1: The Double Load
+- *What:* History hydrated in useEffect but no flag to gate disk saves. Save fired twice: once from empty-init, once from hydrate.
+- *Why:* `setHistory([])` initial state triggers effect before mount, then async load triggers again.
+- *Fix:* Added `historyHydrated` state. Only save after hydrate=true.
+
+### Iteration 2: The Ghosting Bug
+- *What:* Large restored history caused ghost rendering. Old messages stuck in viewport.
+- *Why:* Ink doesn't remount on state change. Viewport stays at old scroll position.
+- *Fix:* Added `key={repl.historyHydrated ? "history-ready" : "history-boot"}` to `<HistoryPane>`. Forces full remount after load, snaps to bottom.
+
+### Iteration 3: The /clear Cleanup
+- *What:* /clear should wipe disk and UI state but not pollute history array.
+- *Why:* SetHistory([]) clears UI but not pending quiz/commit states. Stale UI elements persisted.
+- *Fix:* In handleSubmit for CMD_CLEAR, explicitly clear input, stream, quiz, interview, pendingCommit, pendingPr alongside history.
+
+## Future Note
+1. Could auto-save on every message instead of effect for finer grain.
+2. Could export history to file with `/export` command.
+3. Could limit history size (e.g., last 100 messages) to prevent unbounded growth.
+4. Could encrypt history at rest (future concern for sensitive commits).

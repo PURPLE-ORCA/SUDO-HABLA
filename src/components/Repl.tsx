@@ -5,6 +5,7 @@ import { useReplController } from "../hooks/useReplController";
 import type { Config } from "../lib/config";
 import packageJson from "../../package.json";
 import { CommandMenu } from "./repl/CommandMenu";
+import { MentionMenu } from "./repl/MentionMenu";
 import { HistoryPane } from "./repl/HistoryPane";
 import { InputBar } from "./repl/InputBar";
 import { CommitConfirmPanel } from "./repl/CommitConfirmPanel";
@@ -54,6 +55,10 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         <CommandMenu
           showMenu={repl.showMenu && !repl.quiz.active && !repl.pendingPr}
           filteredCommands={repl.filteredCommands}
+        />
+        <MentionMenu
+          showMenu={repl.showMentionMenu && !repl.quiz.active && !repl.pendingPr}
+          suggestions={repl.mentionSuggestions}
         />
         <QuizPanel quiz={repl.quiz} onSelect={repl.handleQuizSubmit} />
         {repl.pendingCommit && (
