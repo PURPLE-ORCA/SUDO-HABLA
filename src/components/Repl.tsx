@@ -45,6 +45,7 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
       >
         <ReplHeader version={packageJson.version} />
         <HistoryPane
+          key={repl.historyHydrated ? "history-ready" : "history-boot"}
           history={repl.history}
           currentStream={repl.currentStream}
           isThinking={repl.isThinking}

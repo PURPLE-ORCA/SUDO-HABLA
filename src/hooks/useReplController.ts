@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useStdout } from "ink";
 import { deleteConfig, type Config } from "../lib/config";
 import { getLatestGitDiff, getPullRequestContext } from "../lib/git";
+import { clearHistory, loadHistory, saveHistory } from "../lib/session";
 import { summarizeFileBlame } from "../lib/replBlame";
 import { getVocab, type VocabEntry, updateMastery } from "../lib/vocab";
 import { buildQuizFromVocab } from "../lib/replQuiz";
@@ -10,6 +11,7 @@ import { readFileForReview } from "../lib/replFiles";
 import {
   CMD_BLAME_PREFIX,
   CMD_COMMIT,
+  CMD_CLEAR,
   CMD_CONFIG,
   CMD_DAILY_PREFIX,
   CMD_ENTREVISTA,
@@ -76,6 +78,7 @@ export const useReplController = ({
   const [inputKey, setInputKey] = useState(0);
   const [isStreaming, setIsStreaming] = useState(false);
   const [history, setHistory] = useState<Message[]>([]);
+  const [historyHydrated, setHistoryHydrated] = useState(false);
   const [currentStream, setCurrentStream] = useState("");
   const [vocabList, setVocabList] = useState<VocabEntry[]>([]);
   const [showSidebar, setShowSidebar] = useState(true);
@@ -110,6 +113,24 @@ export const useReplController = ({
 
     loadVocab();
   }, []);
+
+  useEffect(() => {
+    const hydrateHistory = async () => {
+      const savedHistory = await loadHistory();
+      setHistory(savedHistory);
+      setHistoryHydrated(true);
+    };
+
+    hydrateHistory();
+  }, []);
+
+  useEffect(() => {
+    if (!historyHydrated) return;
+
+    void saveHistory(history).catch(() => {
+      // Ignore disk write failures.
+    });
+  }, [history, historyHydrated]);
 
   useEffect(() => {
     if (!isThinking) return;
@@ -355,6 +376,18 @@ export const useReplController = ({
       return;
     }
 
+    if (trimmedQuery === CMD_CLEAR) {
+      await clearHistory();
+      setInput("");
+      setCurrentStream("");
+      setHistory([]);
+      setQuiz({ active: false });
+      setInterviewQuestion(null);
+      setPendingCommit(null);
+      setPendingPr(null);
+      return;
+    }
+
     setInput("");
     setCurrentStream("");
     setHistory((prev) => [...prev, { role: "user", text: query }]);
@@ -572,6 +605,7 @@ export const useReplController = ({
     isStreaming,
     isThinking,
     history,
+    historyHydrated,
     currentStream,
     loadingMessage,
     loadingIndicator,
