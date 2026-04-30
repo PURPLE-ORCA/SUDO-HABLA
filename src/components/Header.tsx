@@ -7,6 +7,5 @@ export const Header = () => (
     <Text color={BRAND_COLOR} bold>
       {SUDO_HABLA_LOGO}
     </Text>
-    <Text dimColor>v1.4.0 - Hostile Terminal Tutor</Text>
   </Box>
 );

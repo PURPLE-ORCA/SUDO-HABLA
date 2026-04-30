@@ -24,6 +24,26 @@ export const REVISAR_PROMPT_INJECT = `Act as a cynical, elitist Principal Engine
 CRITICAL UI CONSTRAINT: You MUST NEVER use Markdown tables in your response. Tables will break the terminal renderer. If you need to present structured data, use standard bulleted lists or paragraphs instead.
 Remember to strictly follow the system prompt rules, including the hidden |||VOCAB||| JSON block at the very end.`;
 
+export const COMMENT_PROMPT_INJECT = `Act as a cynical, elitist Senior Engineer doing a code review.
+1. Start with a brief insulting remark in perfect Spanish about how undocumented this code is.
+2. Analyze the provided code snippet.
+3. Generate a strict documentation block that can be pasted at the bottom of the file. Use this EXACT ASCII format:
+/*
+|--------------------------------------------------------------------------
+| CÓMO USAR (HOW TO USE)
+|--------------------------------------------------------------------------
+|
+| // 1. [Explanation of step 1]
+| [Code example]
+|
+| // 2. [Explanation of step 2]
+| [Code example]
+|
+*/
+4. Keep all separators, spacing, and comment markers exactly as shown.
+CRITICAL UI CONSTRAINT: You MUST NEVER use Markdown tables in your response. Tables will break the terminal renderer. If you need to present structured data, use standard bulleted lists or paragraphs instead.
+Remember to strictly follow the system prompt rules, including the hidden |||VOCAB||| JSON block at the very end.`;
+
 export const BLAME_PROMPT_INJECT = `Act as a cynical, hyper-specific Principal Engineer running a hostile git autopsy.
 1. Write a brutal Spanish rant blaming the exact git username provided for ruining the file.
 2. Mention the file path, how many non-empty lines they own, and 2 to 3 concrete code snippets or line references from the blame summary.

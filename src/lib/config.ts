@@ -5,10 +5,16 @@ const CONFIG_PATH = path.join(os.homedir(), ".sudo-habla.json");
 
 export type Provider = "gemini" | "openai";
 
+export interface UpdateCheck {
+  timestamp: number;
+  version: string | null;
+}
+
 export interface Config {
   activeProvider: Provider;
   activeModel: string;
   apiKeys: Record<Provider, string>;
+  lastUpdateCheck?: UpdateCheck;
 }
 
 export const readConfig = async (): Promise<Config | null> => {
@@ -29,6 +35,7 @@ export const readConfig = async (): Promise<Config | null> => {
           gemini: parsed.apiKeys.gemini ?? "",
           openai: parsed.apiKeys.openai ?? "",
         },
+        lastUpdateCheck: parsed.lastUpdateCheck,
       };
     }
 
@@ -53,6 +60,7 @@ export const writeConfig = async (
   activeProvider: Provider,
   activeModel: string,
   apiKey: string,
+  lastUpdateCheck?: UpdateCheck,
 ): Promise<void> => {
   const config: Config = {
     activeProvider,
@@ -61,6 +69,7 @@ export const writeConfig = async (
       gemini: activeProvider === "gemini" ? apiKey : "",
       openai: activeProvider === "openai" ? apiKey : "",
     },
+    lastUpdateCheck,
   };
 
   await Bun.write(CONFIG_PATH, JSON.stringify(config, null, 2));

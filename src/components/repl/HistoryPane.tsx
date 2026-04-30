@@ -10,6 +10,8 @@ interface HistoryPaneProps {
   currentStream: string;
   isThinking: boolean;
   loadingIndicator: string;
+  scrollOffset: number;
+  maxVisible: number;
 }
 
 export const HistoryPane = ({
@@ -17,7 +19,16 @@ export const HistoryPane = ({
   currentStream,
   isThinking,
   loadingIndicator,
-}: HistoryPaneProps) => (
+  scrollOffset,
+  maxVisible,
+}: HistoryPaneProps) => {
+  const start = Math.max(0, history.length - maxVisible - scrollOffset);
+  const end = history.length - scrollOffset;
+  const visible = history.slice(start, end);
+    const hasOlder = scrollOffset > 0;
+    const hasNewer = scrollOffset > 0 && end < history.length;
+
+  return (
   <Box
     flexGrow={1}
     flexShrink={1}
@@ -28,7 +39,12 @@ export const HistoryPane = ({
     width="100%"
   >
     <Header />
-    {history.map((msg, i) => (
+    {hasOlder && (
+      <Box flexShrink={0} justifyContent="center" marginBottom={1}>
+        <Text dimColor>↑ {scrollOffset} older messages ↑</Text>
+      </Box>
+    )}
+    {visible.map((msg, i) => (
       <Box key={i} flexDirection="column" marginBottom={1} flexShrink={0}>
         {msg.role === "user" ? (
           <Text color="cyan" bold wrap="truncate-end">
@@ -46,6 +62,11 @@ export const HistoryPane = ({
         )}
       </Box>
     ))}
+    {hasNewer && (
+      <Box flexShrink={0} justifyContent="center" marginTop={1}>
+        <Text dimColor>↓ newer messages below ↓</Text>
+      </Box>
+    )}
     {isThinking && (
       <Box marginBottom={1} flexShrink={0}>
         <Text color="magenta">{loadingIndicator}</Text>
@@ -63,5 +84,11 @@ export const HistoryPane = ({
         <Markdown>{currentStream}</Markdown>
       </Box>
     )}
+    <Box flexShrink={0} justifyContent="center" marginTop={1}>
+      <Text dimColor>
+        [{history.length - end}..{end}/{history.length} msgs | offset:{scrollOffset} | visible:{visible.length}/{maxVisible}]
+      </Text>
+    </Box>
   </Box>
 );
+};

@@ -1,3 +1,201 @@
+## MISSION DEBRIEF: /explore Template Picker + Write Confirm
+
+### Executive Summary
+Shipped `/explore` second-pass UX hardening. Added interactive template picker (PRODUCT/ARCHITECTURE/README), built-in fallback templates, auto-create `.sudo-habla/agents` directory (no auto-seed files), and post-generation Yes/No write confirmation that saves selected markdown file to project root. Forced explore output language to technical Spanish. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: Missing Template Trap**
+- *What:* `/explore product` failed on fresh repo with `Template not found`.
+- *Why:* Directory existed or got created, but no template files; loader had no fallback.
+- *Fix:* Added built-in templates for `product`, `architecture`, `readme` in `agentParser` while still preferring local/global files.
+
+**Iteration 2: Picker Flow**
+- *What:* `/explore` needed guided choice instead of forcing manual template typing.
+- *Why:* Typo/path friction caused repeated misses.
+- *Fix:* Added `pendingExplore` state + `ExploreTemplatePanel` (SelectInput) with PRODUCT.md, ARCHITECTURE.md, README.md, Cancel. Choosing item triggers standard `/explore <template>` path.
+
+**Iteration 3: No Auto-Seed Policy**
+- *What:* Auto-creating template files polluted repo and hid source-of-truth intent.
+- *Why:* User wanted curated selection UX without writing default files.
+- *Fix:* Removed template auto-seed logic. Kept only auto-create directory (`mkdir -p .sudo-habla/agents`) on loader call.
+
+**Iteration 4: Write Confirmation Panel**
+- *What:* Explore output appeared in chat only; user wanted explicit write-to-root action.
+- *Why:* Needed safe confirmation like `/commit` flow.
+- *Fix:* Added `pendingExploreWrite` state + `ExploreWritePanel` (Yes/No). Yes writes mapped file name to root (`PRODUCT.md`, `ARCHITECTURE.md`, `README.md`, or fallback uppercased template). No cancels.
+
+**Iteration 5: English Output Bug**
+- *What:* Generated docs came out in English.
+- *Why:* Built-in template prompts were English-first.
+- *Fix:* Rewrote built-in prompts in Spanish and added hard instruction during `/explore` prompt composition: full document must be technical Spanish.
+
+### Future Note
+1. Could add preview diff before writing file.
+2. Could add overwrite warning when target file already exists.
+3. Could add custom filename mapping in template frontmatter.
+
+---
+
+## MISSION DEBRIEF: Sliding Window Scroll
+
+### Executive Summary
+Shipped a message-count-based sliding window scroll system for Ink's totalitarian rendering engine. Since Ink constantly overwrites stdout, native mouse wheel scrolling is destroyed. We built a "camera" that slices `history` via `scrollOffset` and renders only the visible window. Arrow keys and PageUp/PageDown move the camera. Active panels (quiz, commit confirm, PR actions) suppress scroll keys to avoid fighting `ink-select-input`. Inline indicators show when older/newer messages are off-screen. Debug status line confirms scroll state. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: The Architecture**
+- *What:* Added `scrollOffset` state and `maxVisible` derived from `dimensions.rows - 12` (min 5).
+- *Why:* Ink has no native scroll concept. We must manually window the history array.
+- *Fix:* `history.slice(history.length - maxVisible - scrollOffset, history.length - scrollOffset)`.
+
+**Iteration 2: The Key Binding**
+- *What:* Bound `↑`/`↓` to +/- 1 message, `PageUp`/`PageDown` to +/- `maxVisible`.
+- *Why:* Standard terminal scroll behavior. Page keys for fast traversal.
+- *Fix:* Expanded `handleGlobalInput` type signature. Guarded with `hasActivePanel` check to avoid hijacking `SelectInput` focus in quiz/commit/PR panels.
+
+**Iteration 3: The Window Size Fail**
+- *What:* User reported scrolling did nothing. Arrow keys pressed, no visible change.
+- *Why:* `maxVisible = rows - 12` gave ~28-38 messages for a 40-row terminal. With only 8-10 messages in history, `maxScroll = 0`. Camera had nothing to scroll.
+- *Fix:* Shrunk window to `maxVisible = Math.max(3, Math.floor(rows / 8))`. For 50 rows = 6 messages. With 8 messages, `maxScroll = 2`. Scrolling now triggers.
+
+**Iteration 4: The Visual Confirmation**
+- *What:* User couldn't tell if scrolling worked even after fixing window size.
+- *Why:* No visual feedback when scroll state changed.
+- *Fix:* Added inline indicators: `↑ {n} older messages ↑` and `↓ newer messages below ↓`. Added debug status line at bottom: `[start..end/total msgs | offset:X | visible:Y/Z]`.
+
+**Iteration 5: The Auto-Reset**
+- *What:* When user submits new input, should camera snap to bottom?
+- *Decision:* Yes. `setScrollOffset(0)` at top of `handleSubmit`. New input means user wants to see the response.
+
+### Future Note
+1. Could add `Home`/`End` keys for jump-to-top/bottom.
+2. Could make `maxVisible` smarter: account for actual message line heights instead of raw count.
+3. Could add mouse wheel support via raw mode (complex, platform-specific).
+4. Could persist scroll position across sessions (probably not useful).
+
+---
+
+## MISSION DEBRIEF: Workspace Brain
+
+### Executive Summary
+Auto-detect local AI context files and inject into every prompt. Scans `llms.txt`, `.cursorrules`, `AGENT.md`, `AI.md` in `process.cwd()`. Returns formatted block `=== REPOSITORY RULES ===`. Silent fail. Zero UI noise. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: The Scanner**
+- *What:* Added `getWorkspaceContext()` to `src/lib/workspace.ts`.
+- *Why:* Need local project guidelines injected into AI context for terrifying accuracy.
+- *Fix:* Iterate contextFiles array, `Bun.file(path).exists()` check, `text()` on first match, formatted return.
+
+**Iteration 2: The Injection Point**
+- *What:* Where to inject in handleSubmit?
+- *Why:* Must be after all command interceptors format `aiPrompt`, but before `runAssistantPrompt`.
+- *Fix:* Placed call just before `startThinking()`, appends to `userContent` via `+= workspaceContext`.
+
+### Future Note
+1. Could support multiple files and merge (current: first match only).
+2. Could add `.aider.chat.history` or other AI metadata files.
+3. Could cache file reads to avoid repeated I/O in same session.
+
+---
+
+## MISSION DEBRIEF: Ctrl+B Input Leak
+
+### Executive Summary
+Fixed Ctrl+B shortcut leaking stray `b` into TextInput while also toggling sidebar. Sidebar toggle now fires cleanly, input field stays pristine. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: The Symptom**
+- *What:* Pressing Ctrl+B toggled sidebar but also appended literal `b` to input.
+- *Why:* `ink-text-input` receives keystroke after `useInput` handler fires. No guard existed.
+- *Fix:* Added `suppressNextInputChange` ref. On Ctrl+B, flag=true before toggle.
+
+**Iteration 2: The Filter**
+- *What:* Flag set, but TextInput still got `b`.
+- *Why:* Need to actually filter the incoming `onChange` value.
+- *Fix:* Wrapped input handler to drop trailing `b`/`B` when suppress flag is true. Reset flag after filter.
+
+### Future Note
+1. Could apply same pattern to other hotkeys that might bleed (Ctrl+C not in use, etc).
+2. Could generalize suppress into a hotkey-to-input-map for cleaner handling.
+
+---
+
+## MISSION DEBRIEF: Update Nag (Distribution)
+
+### Executive Summary
+Shipped a background update checker that pings the NPM registry asynchronously on boot, compares semver versions, and renders a bright yellow nag below the ASCII logo if the user is behind. Uses a 24-hour TTL cache stored in `~/.sudo-habla.json` to avoid hammering the registry. Zero impact on the 300ms boot path. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: The Architecture**
+- *What:* Built `src/lib/update.ts` with `checkForUpdates(localVersion)`.
+- *Why:* NPM global packages don't auto-update. Users stay stuck on old versions forever.
+- *Fix:* Pure async fetch. No blocking. Wrapped in `try/catch` so network failures are silent.
+
+**Iteration 2: Semver, Not String Compare**
+- *What:* Simple string comparison (`"1.10.0" > "1.9.0"`) fails because lexicographic ordering is wrong.
+- *Why:* Need correct version ordering.
+- *Fix:* Hand-rolled `parseSemver()` and `isNewer()` that destructure into `[major, minor, patch]` and compare numerically. No external dependency.
+
+**Iteration 3: The TTL Cache**
+- *What:* Hitting NPM on every boot is rude and slow.
+- *Why:* Registry rate limits, user patience.
+- *Fix:* Added `lastUpdateCheck` to `Config` type. Stores `{ timestamp, version }`. If cache age < 24h, returns cached result immediately. Writes cache back to disk best-effort (swallows write errors).
+
+**Iteration 4: The Render**
+- *What:* Where to show the nag?
+- *Why:* Must be visible but not intrusive.
+- *Fix:* Passed `updateAvailable` through `useReplController` → `Repl` → `ReplHeader`. Renders `<Text color="yellow">` directly below the logo. Conditionally rendered only when `updateAvailable` is truthy.
+
+### Future Note
+1. Could add a `/version` command to explicitly check for updates on demand.
+2. Could show changelog URL or release notes in the nag.
+3. Could add an auto-update command (`/update`) that runs `bun add -g sudo-habla` for the user.
+
+---
+
+## AUTOPSY REPORT: Sliding Window Scroll
+
+### Executive Summary
+Shipped a message-count-based sliding window scroll system for Ink's totalitarian rendering engine. Since Ink constantly overwrites stdout, native mouse wheel scrolling is destroyed. We built a "camera" that slices `history` via `scrollOffset` and renders only the visible window. Arrow keys and PageUp/PageDown move the camera. Active panels (quiz, commit confirm, PR actions) suppress scroll keys to avoid fighting `ink-select-input`. Inline indicator shows when older messages are above the fold. TypeScript clean.
+
+### Battle Log
+
+**Iteration 1: The Architecture**
+- *What:* Added `scrollOffset` state and `maxVisible` derived from `dimensions.rows - 12` (min 5).
+- *Why:* Ink has no native scroll concept. We must manually window the history array.
+- *Fix:* `history.slice(history.length - maxVisible - scrollOffset, history.length - scrollOffset)`.
+
+**Iteration 2: The Key Binding**
+- *What:* Bound `↑`/`↓` to +/- 1 message, `PageUp`/`PageDown` to +/- `maxVisible`.
+- *Why:* Standard terminal scroll behavior. Page keys for fast traversal.
+- *Fix:* Expanded `handleGlobalInput` type signature. Guarded with `hasActivePanel` check to avoid hijacking `SelectInput` focus in quiz/commit/PR panels.
+
+**Iteration 3: The Auto-Clamp**
+- *What:* If history shrinks (e.g., `/clear`) or terminal resizes, `scrollOffset` could point past the array.
+- *Why:* Unbounded offset causes empty panes or negative slices.
+- *Fix:* `useEffect` watches `[history.length, maxVisible]` and clamps `scrollOffset` to `Math.min(prev, maxScroll)`.
+
+**Iteration 4: The Inline Indicator**
+- *What:* User needs to know they're not at the bottom.
+- *Why:* Without visual feedback, scrolled state is invisible.
+- *Fix:* `HistoryPane` renders `↑ {scrollOffset} older messages ↑` inline when `scrollOffset > 0`.
+
+**Iteration 5: The Reset on Submit**
+- *What:* When user sends a new message, should camera snap to bottom?
+- *Decision:* Yes. `setScrollOffset(0)` at the top of `handleSubmit`. New input means user wants to see the response.
+
+### Future Note
+1. Could add `Home`/`End` keys for jump-to-top/bottom.
+2. Could persist scroll position across sessions (probably not useful).
+3. Could make `maxVisible` smarter: account for message heights instead of raw count.
+4. Could add mouse wheel support via raw mode (complex, platform-specific).
+
+---
+
 ## AUTOPSY REPORT: Session Persistence & /clear Command
 
 ### Executive Summary

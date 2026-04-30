@@ -1,21 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStdout } from "ink";
 import { deleteConfig, type Config } from "../lib/config";
 import { getLatestGitDiff, getPullRequestContext } from "../lib/git";
 import { clearHistory, loadHistory, saveHistory } from "../lib/session";
 import { summarizeFileBlame } from "../lib/replBlame";
 import { getVocab, type VocabEntry, updateMastery } from "../lib/vocab";
-import { getWorkspaceFiles } from "../lib/workspace";
+import { getWorkspaceContext, getWorkspaceFiles } from "../lib/workspace";
+import { getProjectSkeleton } from "../lib/scanner";
+import { loadAgentTemplate } from "../lib/agentParser";
 import { buildQuizFromVocab } from "../lib/replQuiz";
 import { streamAssistantResponse } from "../lib/replAi";
 import { readFileForReview } from "../lib/replFiles";
+import { checkForUpdates } from "../lib/update";
+import packageJson from "../../package.json";
 import {
   CMD_BLAME_PREFIX,
+  CMD_COMMENT_PREFIX,
   CMD_COMMIT,
   CMD_CLEAR,
   CMD_CONFIG,
   CMD_DAILY_PREFIX,
   CMD_ENTREVISTA,
+  CMD_EXPLORE_PREFIX,
   CMD_EXIT,
   CMD_MEANING_PREFIX,
   CMD_QUIZ,
@@ -28,6 +34,7 @@ import {
 import {
   BLAME_PROMPT_INJECT,
   buildRoastPrompt,
+  COMMENT_PROMPT_INJECT,
   COMMIT_PROMPT_INJECT,
   DAILY_PROMPT_INJECT,
   buildMentionContextPrompt,
@@ -73,6 +80,22 @@ const normalizeMentionPath = (value: string) => value.replace(/^@+/, "").trim();
 const pickRandomThinkingMessage = () =>
   THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)]!;
 
+const getExploreOutputFileName = (templateName: string) => {
+  const normalized = templateName
+    .trim()
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .pop()
+    ?.replace(/\.md$/i, "")
+    .toLowerCase();
+
+  if (normalized === "product") return "PRODUCT.md";
+  if (normalized === "architecture") return "ARCHITECTURE.md";
+  if (normalized === "readme") return "README.md";
+  return `${(normalized || "EXPLORE_OUTPUT").toUpperCase()}.md`;
+};
+
 export const useReplController = ({
   config,
   onConfigReset,
@@ -93,15 +116,25 @@ export const useReplController = ({
   const [interviewQuestion, setInterviewQuestion] = useState<string | null>(null);
   const [pendingCommit, setPendingCommit] = useState<string | null>(null);
   const [pendingPr, setPendingPr] = useState<string | null>(null);
+  const [pendingExplore, setPendingExplore] = useState(false);
+  const [pendingExploreWrite, setPendingExploreWrite] = useState<{
+    fileName: string;
+    content: string;
+  } | null>(null);
   const [isThinking, setIsThinking] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
   const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const [updateAvailable, setUpdateAvailable] = useState<string | null>(null);
+  const suppressNextInputChange = useRef(false);
 
   const { stdout } = useStdout();
   const [dimensions, setDimensions] = useState({
     columns: stdout.columns,
     rows: stdout.rows,
   });
+
+  const maxVisible = Math.max(3, Math.floor(dimensions.rows / 8));
 
   useEffect(() => {
     const onResize = () =>
@@ -111,6 +144,15 @@ export const useReplController = ({
       stdout.off("resize", onResize);
     };
   }, [stdout]);
+
+  useEffect(() => {
+    const checkUpdates = async () => {
+      const latest = await checkForUpdates(packageJson.version);
+      setUpdateAvailable(latest);
+    };
+
+    void checkUpdates();
+  }, []);
 
   useEffect(() => {
     const loadVocab = async () => {
@@ -146,6 +188,11 @@ export const useReplController = ({
       // Ignore disk write failures.
     });
   }, [history, historyHydrated]);
+
+  useEffect(() => {
+    const maxScroll = Math.max(0, history.length - maxVisible);
+    setScrollOffset((prev) => Math.min(prev, maxScroll));
+  }, [history.length, maxVisible]);
 
   useEffect(() => {
     if (!isThinking) return;
@@ -256,10 +303,53 @@ export const useReplController = ({
     return visibleText;
   };
 
-  const handleGlobalInput = (char: string, key: { ctrl?: boolean; tab?: boolean }) => {
-    if (key.ctrl && char === "b") {
+  const handleGlobalInput = (
+    char: string,
+    key: {
+      ctrl?: boolean;
+      tab?: boolean;
+      upArrow?: boolean;
+      downArrow?: boolean;
+      pageUp?: boolean;
+      pageDown?: boolean;
+      name?: string;
+      sequence?: string;
+    },
+  ) => {
+    if (key.ctrl && (char === "b" || key.name === "b" || key.sequence === "\u0002")) {
+      suppressNextInputChange.current = true;
       setShowSidebar((prev) => !prev);
+      return;
     }
+
+    const hasActivePanel =
+      quiz.active || pendingCommit || pendingPr || pendingExplore || pendingExploreWrite;
+
+    if (!hasActivePanel) {
+      const maxScroll = Math.max(0, history.length - maxVisible);
+      if (key.upArrow) {
+        const next = Math.min(scrollOffset + 1, maxScroll);
+        setScrollOffset(next);
+        return;
+      }
+      if (key.downArrow) {
+        const next = Math.max(scrollOffset - 1, 0);
+        setScrollOffset(next);
+        return;
+      }
+      if (key.pageUp) {
+        const next = Math.min(scrollOffset + maxVisible, maxScroll);
+        setScrollOffset(next);
+        return;
+      }
+      if (key.pageDown) {
+        const next = Math.max(scrollOffset - maxVisible, 0);
+        setScrollOffset(next);
+        return;
+      }
+    }
+
+
 
     if (key.tab && showMentionMenu && mentionSuggestions.length > 0) {
       const match = mentionSuggestions[0]!;
@@ -273,6 +363,20 @@ export const useReplController = ({
       setInput(match.endsWith(" ") ? match : `${match} `);
       setInputKey((prev) => prev + 1);
     }
+  };
+
+  const handleInputChange = (value: string) => {
+    setInput((prev) => {
+      if (suppressNextInputChange.current) {
+        suppressNextInputChange.current = false;
+
+        if (value === `${prev}b` || value === `${prev}B`) {
+          return prev;
+        }
+      }
+
+      return value;
+    });
   };
 
   const handleQuizSubmit = async (item: { value: string }) => {
@@ -395,7 +499,52 @@ export const useReplController = ({
     ]);
   };
 
+  const handleExploreTemplateSelect = async (item: { value: string }) => {
+    const choice = item.value;
+    setPendingExplore(false);
+
+    if (choice === "cancel") {
+      setHistory((prev) => [
+        ...prev,
+        { role: "assistant", text: "Explore cancelled." },
+      ]);
+      return;
+    }
+
+    await handleSubmit(`${CMD_EXPLORE_PREFIX}${choice}`);
+  };
+
+  const handleExploreWriteConfirm = async (item: { value: string }) => {
+    if (!pendingExploreWrite) return;
+
+    const { fileName, content } = pendingExploreWrite;
+    setPendingExploreWrite(null);
+
+    if (item.value === "yes") {
+      try {
+        await Bun.write(fileName, `${content.trim()}\n`);
+        setHistory((prev) => [
+          ...prev,
+          { role: "assistant", text: `Wrote ${fileName} in project root.` },
+        ]);
+      } catch (error: any) {
+        setHistory((prev) => [
+          ...prev,
+          { role: "assistant", text: `Failed to write ${fileName}: ${error?.message ?? error}` },
+        ]);
+      }
+      return;
+    }
+
+    setHistory((prev) => [
+      ...prev,
+      { role: "assistant", text: `Cancelled writing ${fileName}.` },
+    ]);
+  };
+
   const handleSubmit = async (query: string) => {
+    setScrollOffset(0);
+
     if (query.trim() === CMD_QUIZ) {
       if (vocabList.length < 4) {
         setHistory((prev) => [
@@ -441,6 +590,8 @@ export const useReplController = ({
       setInterviewQuestion(null);
       setPendingCommit(null);
       setPendingPr(null);
+      setPendingExplore(false);
+      setPendingExploreWrite(null);
       return;
     }
 
@@ -450,6 +601,15 @@ export const useReplController = ({
 
     let aiPrompt = query;
     const isPrCommand = query.trim() === CMD_PR;
+    const isExploreCommand = query.startsWith(CMD_EXPLORE_PREFIX);
+    const exploreTemplateName = isExploreCommand
+      ? query.slice(CMD_EXPLORE_PREFIX.length).trim()
+      : "";
+
+    if (query.trim() === CMD_EXPLORE_PREFIX.trim()) {
+      setPendingExplore(true);
+      return;
+    }
 
     if (query.trim() === CMD_COMMIT) {
       startThinking();
@@ -594,6 +754,76 @@ export const useReplController = ({
         ]);
         return;
       }
+    } else if (!interviewQuestion && query.startsWith(CMD_COMMENT_PREFIX)) {
+      startThinking();
+      const filePath = normalizeMentionPath(query.slice(CMD_COMMENT_PREFIX.length));
+
+      if (!filePath) {
+        stopThinking();
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text: "Usage: /comment @filepath",
+          },
+        ]);
+        return;
+      }
+
+      try {
+        const file = Bun.file(filePath);
+        if (!(await file.exists())) {
+          stopThinking();
+          setHistory((prev) => [
+            ...prev,
+            { role: "assistant", text: buildMissingFileMessage(filePath) },
+          ]);
+          return;
+        }
+
+        const fileContent = await file.text();
+        aiPrompt = `${COMMENT_PROMPT_INJECT}\n\nFile: ${filePath}\n\n\`\`\`\n${fileContent}\n\`\`\``;
+      } catch (error) {
+        stopThinking();
+        setHistory((prev) => [
+          ...prev,
+          { role: "assistant", text: buildFileReadErrorMessage(error) },
+        ]);
+        return;
+      }
+    } else if (!interviewQuestion && query.startsWith(CMD_EXPLORE_PREFIX)) {
+      startThinking();
+      const templateName = query.slice(CMD_EXPLORE_PREFIX.length).trim();
+
+      if (!templateName) {
+        stopThinking();
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text: "Usage: /explore <template>",
+          },
+        ]);
+        return;
+      }
+
+      try {
+        const systemPrompt = await loadAgentTemplate(templateName);
+        const skeleton = await getProjectSkeleton();
+        aiPrompt = `${systemPrompt}\n\n${skeleton}\n\nInstrucción obligatoria: redacta TODO el documento final en español técnico (castellano). No escribas contenido en inglés salvo traducciones puntuales entre paréntesis si aplican.\n\nRemember to append hidden vocab block exactly:\n|||VOCAB||| [{\"word\": \"el despliegue\", \"translation\": \"the deployment\"}] |||END_VOCAB|||`;
+      } catch (error: any) {
+        stopThinking();
+        setHistory((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            text:
+              error?.message ||
+              `Template not found: ${templateName}. Expected .sudo-habla/agents/${templateName}.md`,
+          },
+        ]);
+        return;
+      }
     } else if (!interviewQuestion && query.startsWith(CMD_REVISAR_PREFIX)) {
       startThinking();
       const filePath = normalizeMentionPath(query.slice(CMD_REVISAR_PREFIX.length));
@@ -633,18 +863,31 @@ export const useReplController = ({
       }
     }
 
+    const workspaceContext = await getWorkspaceContext();
+
     startThinking();
     setIsStreaming(true);
 
     try {
       const mentionContext = await resolveMentionContext(query);
-      const userContent =
+      let userContent =
         query === CMD_ROAST
           ? buildRoastPrompt(await getLatestGitDiff())
           : aiPrompt;
+
+      if (workspaceContext) {
+        userContent += workspaceContext;
+      }
+
       const visibleText = await runAssistantPrompt(userContent, mentionContext || undefined);
       if (isPrCommand && visibleText.trim()) {
         setPendingPr(visibleText);
+      }
+      if (isExploreCommand && visibleText.trim()) {
+        setPendingExploreWrite({
+          fileName: getExploreOutputFileName(exploreTemplateName),
+          content: visibleText,
+        });
       }
     } catch (error) {
       stopThinking();
@@ -672,15 +915,23 @@ export const useReplController = ({
     interviewQuestion,
     pendingCommit,
     pendingPr,
+    pendingExplore,
+    pendingExploreWrite,
     filteredCommands,
     showMenu,
     mentionSuggestions,
     showMentionMenu,
+    scrollOffset,
+    maxVisible,
+    updateAvailable,
     setInput,
+    handleInputChange,
     handleGlobalInput,
     handleQuizSubmit,
     handleCommitConfirm,
     handlePrAction,
+    handleExploreTemplateSelect,
+    handleExploreWriteConfirm,
     handleSubmit,
   };
 };

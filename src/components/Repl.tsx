@@ -9,6 +9,8 @@ import { MentionMenu } from "./repl/MentionMenu";
 import { HistoryPane } from "./repl/HistoryPane";
 import { InputBar } from "./repl/InputBar";
 import { CommitConfirmPanel } from "./repl/CommitConfirmPanel";
+import { ExploreTemplatePanel } from "./repl/ExploreTemplatePanel";
+import { ExploreWritePanel } from "./repl/ExploreWritePanel";
 import { PrActionPanel } from "./repl/PrActionPanel";
 import { QuizPanel } from "./repl/QuizPanel";
 import { ReplHeader } from "./repl/ReplHeader";
@@ -44,20 +46,22 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
         borderColor={CLI_BRAND_COLOR}
         overflow="hidden"
       >
-        <ReplHeader version={packageJson.version} />
+        <ReplHeader version={packageJson.version} updateAvailable={repl.updateAvailable} />
         <HistoryPane
           key={repl.historyHydrated ? "history-ready" : "history-boot"}
           history={repl.history}
           currentStream={repl.currentStream}
           isThinking={repl.isThinking}
           loadingIndicator={repl.loadingIndicator}
+          scrollOffset={repl.scrollOffset}
+          maxVisible={repl.maxVisible}
         />
         <CommandMenu
-          showMenu={repl.showMenu && !repl.quiz.active && !repl.pendingPr}
+          showMenu={repl.showMenu && !repl.quiz.active && !repl.pendingPr && !repl.pendingExplore && !repl.pendingExploreWrite}
           filteredCommands={repl.filteredCommands}
         />
         <MentionMenu
-          showMenu={repl.showMentionMenu && !repl.quiz.active && !repl.pendingPr}
+          showMenu={repl.showMentionMenu && !repl.quiz.active && !repl.pendingPr && !repl.pendingExplore && !repl.pendingExploreWrite}
           suggestions={repl.mentionSuggestions}
         />
         <QuizPanel quiz={repl.quiz} onSelect={repl.handleQuizSubmit} />
@@ -68,13 +72,20 @@ export const Repl = ({ config, onConfigReset }: ReplProps) => {
           />
         )}
         {repl.pendingPr && <PrActionPanel onSelect={repl.handlePrAction} />}
-        {!repl.quiz.active && !repl.pendingCommit && !repl.pendingPr && (
+        {repl.pendingExplore && <ExploreTemplatePanel onSelect={repl.handleExploreTemplateSelect} />}
+        {repl.pendingExploreWrite && (
+          <ExploreWritePanel
+            fileName={repl.pendingExploreWrite.fileName}
+            onSelect={repl.handleExploreWriteConfirm}
+          />
+        )}
+        {!repl.quiz.active && !repl.pendingCommit && !repl.pendingPr && !repl.pendingExplore && !repl.pendingExploreWrite && (
           <InputBar
             input={repl.input}
             inputKey={repl.inputKey}
             interviewQuestion={repl.interviewQuestion}
             quizActive={repl.quiz.active}
-            onChange={repl.setInput}
+            onChange={repl.handleInputChange}
             onSubmit={repl.handleSubmit}
           />
         )}
