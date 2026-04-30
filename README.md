@@ -1,6 +1,8 @@
 # sudo-habla 🐬☕
 
+![sudo-habla](src/assets/sudo.png)
 > A hostile, terminal-based Spanish tutor for cynical developers.
+
 
 Most language learning apps give you a dancing green owl that claps when you successfully say "the apple is red." They don't teach you how to survive a daily standup, complain about legacy spaghetti code, or explain a merge conflict to your lead engineer. 
 
